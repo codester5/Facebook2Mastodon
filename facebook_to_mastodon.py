@@ -12,18 +12,21 @@ import time
 import json
 
 # Anpassbare Variablen
-api_base_url = os.getenv("MASTODON_API_URL")
-access_token = os.getenv("MASTODON_ACCESS_TOKEN")
-feed_url = os.getenv("FEED_URL")
+api_base_url = os.getenv("MASTODON_API_URL")  # Die Basis-URL deiner Mastodon-Instanz
+access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Dein Access-Token
+feed_url = os.getenv("FEED_URL")  # URL des RSS-Feeds
 
-
-# Gespeicherte IDs werden in einer Umgebungsvariablen gehalten
+# Gespeicherte IDs werden in einer Datei gehalten
 def get_saved_entry_ids():
-    saved_ids = os.getenv("SAVED_ENTRY_IDS", "[]")
-    return json.loads(saved_ids)
+    try:
+        with open("saved_entry_ids.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return []
 
 def save_entry_ids(saved_ids):
-    os.environ["SAVED_ENTRY_IDS"] = json.dumps(saved_ids)
+    with open("saved_entry_ids.json", "w") as file:
+        json.dump(saved_ids, file)
 
 def fetch_feed_entries(feed_url):
     # Parse den RSS-Feed und extrahiere die Einträge
@@ -158,7 +161,7 @@ def main(feed_entries):
         request_timeout=20  # Erhöhter Timeout für Mastodon-API
     )
     
-    # Verarbeitete IDs aus Umgebungsvariablen laden
+    # Verarbeitete IDs aus Datei laden
     saved_entry_ids = get_saved_entry_ids()
 
     entry_found = False
@@ -198,7 +201,7 @@ def main(feed_entries):
         image_urls = extract_image_urls_from_summary(summary)
 
         # Nachricht erstellen
-        message = f"{clean_content} \n\n#Beşiktaş #Football\n\n{posted_time}"
+        message = f"{clean_content} \n\n#Beşiktaş #Football #BJK\n\n{posted_time}"
 
         # Nachricht posten
         if image_urls:
@@ -216,7 +219,7 @@ def main(feed_entries):
         # Wartezeit von 1 Minute zwischen den Posts
         time.sleep(60)
 
-    # Speichere die IDs in die Umgebungsvariable
+    # Speichere die IDs in die Datei
     save_entry_ids(saved_entry_ids)
 
     if not entry_found:
