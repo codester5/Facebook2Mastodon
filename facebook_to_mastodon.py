@@ -40,7 +40,8 @@ def post_tweet(mastodon, message):
     retries = 3
     while retries > 0:
         try:
-            mastodon.status_post(message_cut, visibility='private')
+            mastodon.status_post(message_cut, visibility='public')
+            time.sleep(60)  # Wartezeit von 1 Minute zwischen Posts
             break  # Erfolgreich, Schleife beenden
         except mastodon.MastodonAPIError as e:
             if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
@@ -68,7 +69,8 @@ def post_tweet_with_images(mastodon, message, image_urls):
     retries = 3
     while retries > 0:
         try:
-            mastodon.status_post(message_cut, media_ids=media_ids, visibility='private')
+            mastodon.status_post(message_cut, media_ids=media_ids, visibility='public')
+            time.sleep(60)  # Wartezeit von 1 Minute zwischen Posts
             break  # Erfolgreich, Schleife beenden
         except mastodon.MastodonAPIError as e:
             if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
@@ -221,14 +223,4 @@ def main(feed_entries):
     if not entry_found:
         print("Keine neuen Einträge gefunden.")
 
-    print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
-
-if __name__ == "__main__":
-    feed_entries = fetch_feed_entries(feed_url)
-    main(feed_entries)
-
-    print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
-
-if __name__ == "__main__":
-    feed_entries = fetch_feed_entries(feed_url)
-    main(feed_entries)
+    print("Erfolgreich beendet: Alle neuen Einträge wurden
