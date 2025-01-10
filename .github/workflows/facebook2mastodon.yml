@@ -23,11 +23,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install feedparser mastodon.py beautifulsoup4
 
+    - name: Load saved entry IDs
+      run: |
+        if [ ! -f saved_entry_ids.json ]; then
+          echo "[]" > saved_entry_ids.json
+        fi
+
     - name: Run script
       env:
-        SAVED_ENTRY_IDS: ${{ secrets.SAVED_ENTRY_IDS }} # Umgebungsvariable für gespeicherte IDs
-        MASTODON_API_URL: ${{ secrets.MASTODON_API_URL }} # Mastodon-Instanz-URL
-        MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }} # Mastodon-Zugangstoken
-        FEED_URL: ${{ secrets.FEED_URL }} # RSS-Feed-URL
+        MASTODON_API_URL: ${{ secrets.MASTODON_API_URL }}
+        MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+        FEED_URL: ${{ secrets.FEED_URL }}
+      run: python facebook_to_mastodon.py
+
+    - name: Commit updated entry IDs
       run: |
-        python facebook_to_mastodon.py
+        git config --local user.name "github-actions[bot]"
+        git config --local user.email "actions@github.com"
+        git add saved_entry_ids.json
+        git commit -m "Update saved entry IDs" || echo "No changes to commit"
+        git push
