@@ -11,8 +11,6 @@ from bs4 import BeautifulSoup
 import time
 import json
 
-
-
 # Anpassbare Variablen
 api_base_url = os.getenv("MASTODON_API_URL")
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")
@@ -41,7 +39,6 @@ def post_tweet(mastodon, message):
     while retries > 0:
         try:
             mastodon.status_post(message_cut, visibility='public')
-            time.sleep(60)  # Wartezeit von 1 Minute zwischen Posts
             break  # Erfolgreich, Schleife beenden
         except mastodon.MastodonAPIError as e:
             if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
@@ -70,7 +67,6 @@ def post_tweet_with_images(mastodon, message, image_urls):
     while retries > 0:
         try:
             mastodon.status_post(message_cut, media_ids=media_ids, visibility='public')
-            time.sleep(60)  # Wartezeit von 1 Minute zwischen Posts
             break  # Erfolgreich, Schleife beenden
         except mastodon.MastodonAPIError as e:
             if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
@@ -217,10 +213,17 @@ def main(feed_entries):
         if len(saved_entry_ids) > 5:
             saved_entry_ids = saved_entry_ids[-5:]
 
+        # Wartezeit von 1 Minute zwischen den Posts
+        time.sleep(60)
+
     # Speichere die IDs in die Umgebungsvariable
     save_entry_ids(saved_entry_ids)
 
     if not entry_found:
         print("Keine neuen Einträge gefunden.")
 
-    print("Erfolgreich beendet: Alle neuen Einträge wurden!")
+    print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
+
+if __name__ == "__main__":
+    feed_entries = fetch_feed_entries(feed_url)
+    main(feed_entries)
