@@ -11,10 +11,12 @@ from bs4 import BeautifulSoup
 import time
 import json
 
+
 # Anpassbare Variablen
 api_base_url = os.getenv("MASTODON_API_URL")
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")
 feed_url = os.getenv("FEED_URL")
+
 
 # Gespeicherte IDs werden in einer Umgebungsvariablen gehalten
 def get_saved_entry_ids():
@@ -33,7 +35,21 @@ def fetch_feed_entries(feed_url):
 def post_tweet(mastodon, message):
     # Veröffentliche den Tweet auf Mastodon
     message_cut = truncate_text(message)
-    mastodon.status_post(message_cut, visibility='private')
+
+    retries = 3
+    while retries > 0:
+        try:
+            mastodon.status_post(message_cut, visibility='private')
+            break  # Erfolgreich, Schleife beenden
+        except mastodon.errors.MastodonServiceUnavailableError as e:
+            print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
+            retries -= 1
+            if retries > 0:
+                print("Warte 10 Sekunden und versuche es erneut...")
+                time.sleep(10)
+            else:
+                print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
+                break
 
 def post_tweet_with_images(mastodon, message, image_urls):
     # Veröffentliche den Beitrag mit einem oder mehreren Bildern auf Mastodon
@@ -44,7 +60,21 @@ def post_tweet_with_images(mastodon, message, image_urls):
 
     # Lade die Bilder hoch und erhalte die Media-IDs
     media_ids = upload_images(mastodon, limited_image_urls)
-    mastodon.status_post(message_cut, media_ids=media_ids, visibility='private')
+
+    retries = 3
+    while retries > 0:
+        try:
+            mastodon.status_post(message_cut, media_ids=media_ids, visibility='private')
+            break  # Erfolgreich, Schleife beenden
+        except mastodon.errors.MastodonServiceUnavailableError as e:
+            print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
+            retries -= 1
+            if retries > 0:
+                print("Warte 10 Sekunden und versuche es erneut...")
+                time.sleep(10)
+            else:
+                print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
+                break
 
 def upload_images(mastodon, image_urls):
     # Lade Bilder hoch und gib die Media-IDs zurück
