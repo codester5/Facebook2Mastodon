@@ -223,4 +223,4 @@ def main(feed_entries):
     if not entry_found:
         print("Keine neuen Einträge gefunden.")
 
-    print("Erfolgreich beendet: Alle neuen Einträge wurden
+    print("Erfolgreich beendet: Alle neuen Einträge wurden!")
