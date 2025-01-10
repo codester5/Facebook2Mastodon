@@ -1,0 +1,33 @@
+name: Facebook to Mastodon
+
+on:
+  schedule:
+    - cron: "0 * * * *" # Stündlich ausführen
+  workflow_dispatch: # Manuelles Auslösen ermöglichen
+
+jobs:
+  post-to-mastodon:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install feedparser mastodon.py beautifulsoup4
+
+    - name: Run script
+      env:
+        SAVED_ENTRY_IDS: ${{ secrets.SAVED_ENTRY_IDS }} # Umgebungsvariable für gespeicherte IDs
+        MASTODON_API_URL: ${{ secrets.MASTODON_API_URL }} # Mastodon-Instanz-URL
+        MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }} # Mastodon-Zugangstoken
+        FEED_URL: ${{ secrets.FEED_URL }} # RSS-Feed-URL
+      run: |
+        python facebook_to_mastodon.py
