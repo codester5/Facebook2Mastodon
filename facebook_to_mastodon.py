@@ -12,6 +12,7 @@ import time
 import json
 
 
+
 # Anpassbare Variablen
 api_base_url = os.getenv("MASTODON_API_URL")
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")
@@ -41,15 +42,18 @@ def post_tweet(mastodon, message):
         try:
             mastodon.status_post(message_cut, visibility='private')
             break  # Erfolgreich, Schleife beenden
-        except mastodon.errors.MastodonServiceUnavailableError as e:
-            print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
-            retries -= 1
-            if retries > 0:
-                print("Warte 10 Sekunden und versuche es erneut...")
-                time.sleep(10)
+        except mastodon.MastodonAPIError as e:
+            if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
+                print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
+                retries -= 1
+                if retries > 0:
+                    print("Warte 10 Sekunden und versuche es erneut...")
+                    time.sleep(10)
+                else:
+                    print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
+                    break
             else:
-                print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
-                break
+                raise  # Anderen Fehler weiterwerfen
 
 def post_tweet_with_images(mastodon, message, image_urls):
     # Veröffentliche den Beitrag mit einem oder mehreren Bildern auf Mastodon
@@ -66,15 +70,18 @@ def post_tweet_with_images(mastodon, message, image_urls):
         try:
             mastodon.status_post(message_cut, media_ids=media_ids, visibility='private')
             break  # Erfolgreich, Schleife beenden
-        except mastodon.errors.MastodonServiceUnavailableError as e:
-            print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
-            retries -= 1
-            if retries > 0:
-                print("Warte 10 Sekunden und versuche es erneut...")
-                time.sleep(10)
+        except mastodon.MastodonAPIError as e:
+            if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
+                print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
+                retries -= 1
+                if retries > 0:
+                    print("Warte 10 Sekunden und versuche es erneut...")
+                    time.sleep(10)
+                else:
+                    print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
+                    break
             else:
-                print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
-                break
+                raise  # Anderen Fehler weiterwerfen
 
 def upload_images(mastodon, image_urls):
     # Lade Bilder hoch und gib die Media-IDs zurück
@@ -213,6 +220,12 @@ def main(feed_entries):
 
     if not entry_found:
         print("Keine neuen Einträge gefunden.")
+
+    print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
+
+if __name__ == "__main__":
+    feed_entries = fetch_feed_entries(feed_url)
+    main(feed_entries)
 
     print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
 
