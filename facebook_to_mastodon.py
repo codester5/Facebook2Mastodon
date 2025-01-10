@@ -12,9 +12,9 @@ import time
 import json
 
 # Anpassbare Variablen
-api_base_url = System.getenv("MASTODON_API_URL")
-access_token = System.getenv("MASTODON_ACCESS_TOKEN")
-feed_url = System.getenv("FEED_URL")
+api_base_url = os.getenv("MASTODON_API_URL")
+access_token = os.getenv("MASTODON_ACCESS_TOKEN")
+feed_url = os.getenv("FEED_URL")
 
 # Gespeicherte IDs werden in einer Umgebungsvariablen gehalten
 def get_saved_entry_ids():
