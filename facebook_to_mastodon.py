@@ -98,8 +98,8 @@ def main(feed_entries):
             if video_urls:
                 media_ids += upload_media(mastodon, video_urls, media_type="video")
 
-            mastodon.status_post(message, media_ids=media_ids, visibility='public')
-            print(f"INFO: Eintrag gepostet: {entry.link}")
+            response = mastodon.status_post(message, media_ids=media_ids, visibility='public')
+            print(f"INFO: Post erfolgreich: {response}")
 
             # Zeitstempel sofort speichern
             saved_timestamps.append(entry_time.isoformat())
@@ -107,8 +107,10 @@ def main(feed_entries):
                 saved_timestamps = saved_timestamps[-20:]
             save_timestamps(saved_timestamps)  # Aktualisierung direkt nach dem Post
 
+        except mastodon.MastodonAPIError as e:
+            print(f"ERROR: Mastodon API-Fehler {e.status_code}: {e.response}")
         except Exception as e:
-            print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
+            print(f"ERROR: Unerwarteter Fehler: {e}")
             continue
 
         time.sleep(15)  # 15 Sekunden Pause zwischen den Posts
