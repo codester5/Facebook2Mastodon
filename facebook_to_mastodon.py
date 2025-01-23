@@ -51,12 +51,16 @@ def upload_images(mastodon, image_urls):
             print(f"ERROR: Bild-Upload fehlgeschlagen: {e}")
     return media_ids
 
-# HTML bereinigen
+# HTML bereinigen und Facebook-Link entfernen
 def clean_content(summary):
     soup = BeautifulSoup(summary, 'html.parser')
     for img in soup.find_all('img'):
         img.decompose()
-    return soup.get_text().strip()
+    text = soup.get_text().strip()
+
+    # Facebook-Link entfernen
+    text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
+    return text.strip()
 
 # Hauptfunktion
 def main(feed_entries):
@@ -76,7 +80,10 @@ def main(feed_entries):
 
         clean_text = clean_content(entry.summary)
         image_urls = [img['src'] for img in BeautifulSoup(entry.summary, 'html.parser').find_all('img')]
-        message = f"{clean_text}\n\n{entry.link}"
+
+        # Datum und Uhrzeit des Originalposts hinzufügen (TT/MM/JJJJ HH:MM)
+        published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
+        message = f"{clean_text}\n\n{published_info}"
 
         try:
             if image_urls:
