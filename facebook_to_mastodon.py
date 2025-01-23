@@ -11,10 +11,17 @@ import mimetypes
 import re
 
 # Anpassbare Variablen
-api_base_url = os.getenv("MASTODON_API_URL")
-access_token = os.getenv("MASTODON_ACCESS_TOKEN")
-feed_url = os.getenv("FEED_URL")
+api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
+access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
+feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
 
+# Debugging-Ausgaben
+print("DEBUG: Skript gestartet.")
+print(f"DEBUG: Mastodon API URL: {api_base_url}")
+print(f"DEBUG: Access Token verfügbar: {'Ja' if access_token else 'Nein'}")
+print(f"DEBUG: RSS Feed URL: {feed_url}")
+
+# Gespeicherte Zeitstempel verwalten
 def get_saved_timestamps():
     try:
         with open("saved_timestamps.json", "r") as file:
@@ -114,4 +121,5 @@ def main(feed_entries):
 
 if __name__ == "__main__":
     entries = fetch_feed_entries(feed_url)
+    print(f"DEBUG: Anzahl der abgerufenen Einträge: {len(entries)}")
     main(entries)
