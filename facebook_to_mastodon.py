@@ -32,35 +32,39 @@ def fetch_feed_entries(feed_url):
     feed = feedparser.parse(feed_url)
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
-# Bilder hochladen
-def upload_images(mastodon, image_urls):
+# Medien (Bilder/Videos) hochladen
+def upload_media(mastodon, media_urls, media_type):
     media_ids = []
-    for image_url in image_urls[:4]:  # Maximal 4 Bilder
+    for media_url in media_urls[:4]:  # Maximal 4 Medien
         try:
-            response = requests.get(image_url, timeout=20)
+            response = requests.get(media_url, timeout=20)
             response.raise_for_status()
             with NamedTemporaryFile(delete=False) as tmp_file:
                 tmp_file.write(response.content)
-                image_path = tmp_file.name
-            mime_type = mimetypes.guess_type(image_path)[0] or 'image/jpeg'
-            with open(image_path, 'rb') as image_file:
-                media_info = mastodon.media_post(image_file, mime_type=mime_type, description="Bild")
+                media_path = tmp_file.name
+            mime_type = mimetypes.guess_type(media_path)[0] or 'application/octet-stream'
+            with open(media_path, 'rb') as media_file:
+                media_info = mastodon.media_post(
+                    media_file,
+                    mime_type=mime_type,
+                    description="Automatisch generiertes Bild/Video"
+                )
                 media_ids.append(media_info['id'])
-            os.unlink(image_path)
+            os.unlink(media_path)
         except Exception as e:
-            print(f"ERROR: Bild-Upload fehlgeschlagen: {e}")
+            print(f"ERROR: {media_type.capitalize()}-Upload fehlgeschlagen: {e}")
     return media_ids
 
-# HTML bereinigen und Facebook-Link entfernen
-def clean_content(summary):
+# HTML bereinigen und Medien extrahieren
+def clean_content_and_extract_media(summary):
     soup = BeautifulSoup(summary, 'html.parser')
-    for img in soup.find_all('img'):
-        img.decompose()
+    images = [img['src'] for img in soup.find_all('img') if 'src' in img.attrs]
+    videos = [source['src'] for source in soup.find_all('source') if 'src' in source.attrs]
     text = soup.get_text().strip()
 
     # Facebook-Link entfernen
     text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
-    return text.strip()
+    return text.strip(), images, videos
 
 # Hauptfunktion
 def main(feed_entries):
@@ -73,38 +77,36 @@ def main(feed_entries):
         if not entry_time:
             continue
 
-        # Prüfen, ob der Eintrag neuer ist als der letzte gespeicherte Zeitstempel
+        # Prüfen, ob der Eintrag neuer ist als der letzte gespeichererte Zeitstempel
         if saved_timestamps and entry_time <= parse(saved_timestamps[-1]):
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten gespeicherten Zeitstempel).")
             continue
 
-        clean_text = clean_content(entry.summary)
-        image_urls = [img['src'] for img in BeautifulSoup(entry.summary, 'html.parser').find_all('img')]
+        clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
 
         # Datum und Uhrzeit des Originalposts hinzufügen (TT/MM/JJJJ HH:MM)
         published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
         message = f"{clean_text}\n\n{published_info}"
 
         try:
+            media_ids = []
             if image_urls:
-                media_ids = upload_images(mastodon, image_urls)
-                mastodon.status_post(message, media_ids=media_ids, visibility='public')
-            else:
-                mastodon.status_post(message, visibility='public')
+                media_ids += upload_media(mastodon, image_urls, media_type="image")
+            if video_urls:
+                media_ids += upload_media(mastodon, video_urls, media_type="video")
+
+            mastodon.status_post(message, media_ids=media_ids, visibility='public')
             print(f"INFO: Eintrag gepostet: {entry.link}")
+
+            # Zeitstempel sofort speichern
+            saved_timestamps.append(entry_time.isoformat())
+            if len(saved_timestamps) > 20:
+                saved_timestamps = saved_timestamps[-20:]
+            save_timestamps(saved_timestamps)  # Aktualisierung direkt nach dem Post
+
         except Exception as e:
             print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
             continue
-
-        # Zeitstempel speichern
-        saved_timestamps.append(entry_time.isoformat())
-
-        # Nur die letzten 20 Zeitstempel speichern
-        if len(saved_timestamps) > 20:
-            saved_timestamps = saved_timestamps[-20:]
-
-        # Zeitstempel aktualisieren
-        save_timestamps(saved_timestamps)
 
         time.sleep(15)  # 15 Sekunden Pause zwischen den Posts
 
