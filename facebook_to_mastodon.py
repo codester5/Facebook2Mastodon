@@ -46,6 +46,40 @@ def get_last_published_date(mastodon):
         print(f"FEHLER: Verbindung zur Mastodon-API fehlgeschlagen: {e}")
         return None
 
+def is_newer(last_date, new_date):
+    """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
+    if not last_date:
+        return True  # Kein vorheriger Post vorhanden
+
+    # Schrittweiser Vergleich
+    if new_date.year > last_date.year:
+        return True
+    elif new_date.year < last_date.year:
+        return False
+
+    if new_date.month > last_date.month:
+        return True
+    elif new_date.month < last_date.month:
+        return False
+
+    if new_date.day > last_date.day:
+        return True
+    elif new_date.day < last_date.day:
+        return False
+
+    if new_date.hour > last_date.hour:
+        return True
+    elif new_date.hour < last_date.hour:
+        return False
+
+    if new_date.minute > last_date.minute:
+        return True
+    elif new_date.minute < last_date.minute:
+        return False
+
+    # Alle Werte sind gleich
+    return False
+
 def upload_media(mastodon, media_urls, media_type):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
     media_ids = []
@@ -95,8 +129,8 @@ def main(feed_entries, last_published_date):
             continue
 
         print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
-        # Nur posten, wenn der neue Zeitstempel später als der letzte ist
-        if last_published_date and entry_time <= last_published_date:
+        # Schrittweise prüfen, ob der neue Eintrag gepostet werden soll
+        if not is_newer(last_published_date, entry_time):
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten 'Published on'-Datum).")
             continue
 
