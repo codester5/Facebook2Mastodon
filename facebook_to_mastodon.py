@@ -67,6 +67,19 @@ def clean_content_and_extract_media(summary):
     text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
     return text.strip(), images, videos
 
+# Text kürzen
+def truncate_text(text, published_info, max_length=500):
+    """Kürzt den Text auf die maximale Länge und priorisiert das Datum."""
+    # Berechne verfügbare Länge für den eigentlichen Text
+    reserved_length = len(published_info) + 5  # Platz für Datum und Trennung
+    text_cut = text[:max_length - reserved_length]
+    
+    # Anhängen von "..." bei Kürzung
+    if len(text) > len(text_cut):
+        text_cut = text_cut.rstrip() + "..."
+    
+    return f"{text_cut}\n\n{published_info}"
+
 # Hauptfunktion
 def main(feed_entries):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
@@ -89,7 +102,7 @@ def main(feed_entries):
 
         # Datum und Uhrzeit des Originalposts hinzufügen (TT/MM/JJJJ HH:MM)
         published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
-        message = f"{clean_text}\n\n{published_info}"
+        message = truncate_text(clean_text, published_info)
 
         try:
             media_ids = []
@@ -108,8 +121,12 @@ def main(feed_entries):
             save_timestamps(saved_timestamps)  # Aktualisierung direkt nach dem Post
 
         except Exception as e:
-            print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
-            continue
+            if "429" in str(e):
+                print("WARNUNG: Ratenlimit überschritten. Warte 2 Minuten.")
+                time.sleep(120)
+            else:
+                print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
+                continue
 
         time.sleep(15)  # 15 Sekunden Pause zwischen den Posts
 
