@@ -107,10 +107,8 @@ def main(feed_entries):
                 saved_timestamps = saved_timestamps[-20:]
             save_timestamps(saved_timestamps)  # Aktualisierung direkt nach dem Post
 
-        except mastodon.MastodonAPIError as e:
-            print(f"ERROR: Mastodon API-Fehler {e.status_code}: {e.response}")
         except Exception as e:
-            print(f"ERROR: Unerwarteter Fehler: {e}")
+            print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
             continue
 
         time.sleep(15)  # 15 Sekunden Pause zwischen den Posts
