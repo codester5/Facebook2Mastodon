@@ -31,14 +31,14 @@ def get_last_published_date(mastodon):
         last_status = mastodon.account_statuses(user_info['id'], limit=1)
         if last_status:
             content = last_status[0]['content']
-            match = re.search(r"Published on: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
+            match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})$", content)
             if match:
                 # Parse und Konvertierung in UTC
                 last_published_date = parse(match.group(1), dayfirst=True).replace(tzinfo=datetime.timezone.utc)
-                print(f"DEBUG: Letztes 'Published on'-Datum (UTC): {last_published_date}")
+                print(f"DEBUG: Letztes Veröffentlichungsdatum (UTC): {last_published_date}")
                 return last_published_date
             else:
-                print("DEBUG: Kein 'Published on'-Datum im letzten Post gefunden.")
+                print("DEBUG: Kein Veröffentlichungsdatum im letzten Post gefunden.")
                 return None
         else:
             print("DEBUG: Keine vorherigen Posts gefunden.")
@@ -113,14 +113,14 @@ def clean_content_and_extract_media(summary):
     text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
     return text.strip(), images, videos
 
-def truncate_text(text, hashtags, published_info, max_length=500):
+def truncate_text(text, hashtags, date_info, max_length=500):
     """Text auf die maximale Länge kürzen."""
     hashtags_part = f"{hashtags}\n\n" if hashtags else ""
-    reserved_length = len(hashtags_part) + len(published_info) + 5
+    reserved_length = len(hashtags_part) + len(date_info) + 5
     text_cut = text[:max_length - reserved_length]
     if len(text) > len(text_cut):
         text_cut = text_cut.rstrip() + "..."
-    return f"{text_cut}\n\n{hashtags_part}{published_info}"
+    return f"{text_cut}\n\n{hashtags_part}{date_info}".strip()
 
 def main(feed_entries, last_published_date):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
@@ -133,12 +133,12 @@ def main(feed_entries, last_published_date):
         print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
         # Schrittweise prüfen, ob der neue Eintrag gepostet werden soll
         if not is_newer(last_published_date, entry_time):
-            print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten 'Published on'-Datum).")
+            print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten Veröffentlichungsdatum).")
             continue
 
         clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
-        published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
-        message = truncate_text(clean_text, hashtags, published_info)
+        date_info = entry_time.strftime('%d/%m/%Y %H:%M')
+        message = truncate_text(clean_text, hashtags, date_info)
 
         if not message.strip():
             print("WARNUNG: Nachricht ist leer, überspringe Eintrag.")
