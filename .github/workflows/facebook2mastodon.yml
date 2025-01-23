@@ -1,47 +1,33 @@
-name: Facebook to Mastodon
+name: RSS to Mastodon
 
 on:
   schedule:
-    - cron: "0 * * * *" # Stündlich ausführen
-  workflow_dispatch: # Manuelles Auslösen ermöglichen
+    # Alle 5 Stunden ausführen
+    - cron: "0 */5 * * *"
 
 jobs:
   post-to-mastodon:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install feedparser mastodon.py beautifulsoup4
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Load saved entry IDs
-      run: |
-        if [ ! -f saved_entry_ids.json ]; then
-          echo "[]" > saved_entry_ids.json
-        fi
-
-    - name: Run script
-      env:
-        MASTODON_API_URL: ${{ secrets.MASTODON_API_URL }}
-        MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
-        FEED_URL: ${{ secrets.FEED_URL }}
-      run: python facebook_to_mastodon.py
-
-    - name: Commit updated entry IDs
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        git config --local user.name "github-actions[bot]"
-        git config --local user.email "actions@github.com"
-        git add saved_entry_ids.json
-        git commit -m "Update saved entry IDs" || echo "No changes to commit"
-        git push
+      - name: Run RSS to Mastodon script
+        env:
+          MASTODON_API_URL: ${{ secrets.MASTODON_API_URL }}
+          MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+          FEED_URL: ${{ secrets.FEED_URL }}
+          HASHTAGS: ${{ secrets.HASHTAGS }}
+        run: |
+          python facebook_to_mastodon.py
