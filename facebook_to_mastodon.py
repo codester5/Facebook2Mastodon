@@ -128,7 +128,7 @@ def main(feed_entries):
                 print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
                 continue
 
-        time.sleep(15)  # 15 Sekunden Pause zwischen den Posts
+        time.sleep(45)  # 15 Sekunden Pause zwischen den Posts
 
 if __name__ == "__main__":
     entries = fetch_feed_entries(feed_url)
