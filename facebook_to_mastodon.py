@@ -14,6 +14,7 @@ import re
 api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
 feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
+hashtags = os.getenv("HASHTAGS")  # Hashtags
 
 def fetch_feed_entries(feed_url):
     """RSS-Feed abrufen und Einträge sortieren."""
@@ -112,13 +113,14 @@ def clean_content_and_extract_media(summary):
     text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
     return text.strip(), images, videos
 
-def truncate_text(text, published_info, max_length=500):
+def truncate_text(text, hashtags, published_info, max_length=500):
     """Text auf die maximale Länge kürzen."""
-    reserved_length = len(published_info) + 5
+    hashtags_part = f"{hashtags}\n\n" if hashtags else ""
+    reserved_length = len(hashtags_part) + len(published_info) + 5
     text_cut = text[:max_length - reserved_length]
     if len(text) > len(text_cut):
         text_cut = text_cut.rstrip() + "..."
-    return f"{text_cut}\n\n{published_info}"
+    return f"{text_cut}\n\n{hashtags_part}{published_info}"
 
 def main(feed_entries, last_published_date):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
@@ -136,7 +138,7 @@ def main(feed_entries, last_published_date):
 
         clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
         published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
-        message = truncate_text(clean_text, published_info)
+        message = truncate_text(clean_text, hashtags, published_info)
 
         if not message.strip():
             print("WARNUNG: Nachricht ist leer, überspringe Eintrag.")
