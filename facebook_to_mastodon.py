@@ -7,6 +7,7 @@ import time
 from dateutil.parser import parse
 from bs4 import BeautifulSoup
 import mimetypes
+import datetime
 import re
 
 # Anpassbare Variablen
@@ -23,15 +24,13 @@ def fetch_feed_entries(feed_url):
 def get_last_post_date(mastodon):
     """Abrufen des Datums des letzten geposteten Status."""
     try:
-        # Abrufen der Account-Informationen als Verbindungstest
         user_info = mastodon.me()
         print(f"DEBUG: Erfolgreich verbunden als: {user_info['username']}")
         
-        # Abrufen des letzten geposteten Status
         last_status = mastodon.account_statuses(user_info['id'], limit=1)
         if last_status:
-            last_post_date = parse(last_status[0]['created_at'])
-            print(f"DEBUG: Letzter geposteter Status: {last_post_date}")
+            last_post_date = parse(last_status[0]['created_at']).astimezone(datetime.timezone.utc)
+            print(f"DEBUG: Letzter geposteter Status (UTC): {last_post_date}")
             return last_post_date
         else:
             print("DEBUG: Keine vorherigen Posts gefunden.")
@@ -83,11 +82,12 @@ def truncate_text(text, published_info, max_length=500):
 def main(feed_entries, last_post_date):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
     for entry in feed_entries:
-        entry_time = parse(entry.published) if 'published' in entry else None
+        entry_time = parse(entry.published).astimezone(datetime.timezone.utc) if 'published' in entry else None
         if not entry_time:
             print(f"DEBUG: Kein Zeitstempel für Eintrag: {entry.link}")
             continue
 
+        print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
         if last_post_date and entry_time <= last_post_date:
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten geposteten Datum).")
             continue
@@ -112,6 +112,7 @@ def main(feed_entries, last_post_date):
         except Exception as e:
             print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
 
+        # Wartezeit zwischen den Posts
         time.sleep(15)
 
 if __name__ == "__main__":
