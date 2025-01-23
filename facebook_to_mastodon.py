@@ -119,7 +119,7 @@ def main(feed_entries):
                 saved_timestamps = saved_timestamps[-20:]
             save_timestamps(saved_timestamps)
 
-        time.sleep(15)
+        time.sleep(45)
 
 if __name__ == "__main__":
     entries = fetch_feed_entries(feed_url)
