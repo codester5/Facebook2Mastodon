@@ -16,217 +16,144 @@ api_base_url = os.getenv("MASTODON_API_URL")  # Die Basis-URL deiner Mastodon-In
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Dein Access-Token
 feed_url = os.getenv("FEED_URL")  # URL des RSS-Feeds
 
-# Gespeicherte IDs werden in einer Datei gehalten
+SAVED_ENTRIES_FILE = "saved_entry_ids.json"
+MAX_SAVED_ENTRIES = 20  # Anzahl der gespeicherten IDs
+
+
 def get_saved_entry_ids():
+    """Lädt die gespeicherten IDs aus einer Datei."""
     try:
-        with open("saved_entry_ids.json", "r") as file:
+        with open(SAVED_ENTRIES_FILE, "r") as file:
             return json.load(file)
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
+
 def save_entry_ids(saved_ids):
-    with open("saved_entry_ids.json", "w") as file:
+    """Speichert die IDs in einer Datei."""
+    with open(SAVED_ENTRIES_FILE, "w") as file:
         json.dump(saved_ids, file)
 
+
 def fetch_feed_entries(feed_url):
-    # Parse den RSS-Feed und extrahiere die Einträge
+    """Ruft den RSS-Feed ab und gibt die Einträge sortiert zurück."""
     feed = feedparser.parse(feed_url)
-    entries = feed.entries
-    return sorted(entries, key=lambda x: parse(x.get('published', '')), reverse=False)  # Sortiere nach Datum (älteste zuerst)
+    return sorted(feed.entries, key=lambda x: parse(x.get("published", "")), reverse=False)
 
-def post_tweet(mastodon, message):
-    # Veröffentliche den Tweet auf Mastodon
-    message_cut = truncate_text(message)
 
-    retries = 3
-    while retries > 0:
-        try:
-            mastodon.status_post(message_cut, visibility='public')
-            break  # Erfolgreich, Schleife beenden
-        except mastodon.MastodonAPIError as e:
-            if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
-                print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
-                retries -= 1
-                if retries > 0:
-                    print("Warte 10 Sekunden und versuche es erneut...")
-                    time.sleep(10)
-                else:
-                    print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
-                    break
-            else:
-                raise  # Anderen Fehler weiterwerfen
+def generate_entry_id(entry):
+    """Erzeugt eine eindeutige ID für einen Feed-Eintrag."""
+    link = entry.get("link", "")
+    published = entry.get("published", "")
+    return f"{link}-{published}" if published else link
 
-def post_tweet_with_images(mastodon, message, image_urls):
-    # Veröffentliche den Beitrag mit einem oder mehreren Bildern auf Mastodon
-    message_cut = truncate_text(message)
 
-    # Beschränke die Anzahl der Bilder auf maximal 4
-    limited_image_urls = image_urls[:4]
-
-    # Lade die Bilder hoch und erhalte die Media-IDs
-    media_ids = upload_images(mastodon, limited_image_urls)
-
-    retries = 3
-    while retries > 0:
-        try:
-            mastodon.status_post(message_cut, media_ids=media_ids, visibility='public')
-            break  # Erfolgreich, Schleife beenden
-        except mastodon.MastodonAPIError as e:
-            if e.status_code == 503:  # Prüfen, ob es sich um einen 503-Fehler handelt
-                print(f"ERROR: Mastodon API ist nicht erreichbar: {e}")
-                retries -= 1
-                if retries > 0:
-                    print("Warte 10 Sekunden und versuche es erneut...")
-                    time.sleep(10)
-                else:
-                    print("Maximale Anzahl an Versuchen erreicht. Überspringe diesen Post.")
-                    break
-            else:
-                raise  # Anderen Fehler weiterwerfen
-
-def upload_images(mastodon, image_urls):
-    # Lade Bilder hoch und gib die Media-IDs zurück
+def post_to_mastodon(mastodon, message, image_urls=None):
+    """Postet einen Beitrag (mit oder ohne Bilder) auf Mastodon."""
+    message = truncate_text(message)
     media_ids = []
-    for image_url in image_urls:
-        retries = 3
-        while retries > 0:
-            try:
-                print(f"DEBUG: Bild-URL {image_url}")
-                response = requests.get(image_url, timeout=20)  # Erhöhter Timeout
-                response.raise_for_status()  # Überprüfe HTTP-Status
 
-                with NamedTemporaryFile(delete=False) as tmp_file:
-                    tmp_file.write(response.content)
-                    image_path = tmp_file.name
+    if image_urls:
+        media_ids = upload_images(mastodon, image_urls)
 
-                # Bestimme den MIME-Typ der Datei
-                mime_type, _ = mimetypes.guess_type(image_path)
-                if not mime_type:
-                    mime_type = 'image/jpeg'  # Standard-MIME-Typ, falls nicht erkannt
+    mastodon.status_post(message, media_ids=media_ids, visibility="public")
 
-                # Lade das Bild hoch und erhalte die Media-ID
-                with open(image_path, 'rb') as image_file:
-                    media_info = mastodon.media_post(
-                        image_file, 
-                        description="Automatisch generiertes Bild",
-                        mime_type=mime_type
-                    )
-                    media_ids.append(media_info['id'])
-
-                # Temporäre Datei löschen
-                os.unlink(image_path)
-                break  # Erfolgreich, keine weiteren Versuche nötig
-            except Exception as e:
-                print(f"ERROR: Bild konnte nicht hochgeladen werden: {e}")
-                retries -= 1
-                if retries > 0:
-                    print("Retrying in 5 seconds...")
-                    time.sleep(5)  # Wartezeit vor erneutem Versuch
-                else:
-                    print("Max retries reached. Skipping image.")
-                    break
-    return media_ids
 
 def truncate_text(text):
-    # Prüfe, ob der Text länger als 500 Zeichen ist
-    if len(text) > 500:
-        return text[:500]
-    else:
-        return text
+    """Kürzt den Text auf 500 Zeichen."""
+    return text[:500] if len(text) > 500 else text
+
+
+def upload_images(mastodon, image_urls):
+    """Lädt Bilder hoch und gibt die Media-IDs zurück."""
+    media_ids = []
+    for image_url in image_urls[:4]:  # Maximal 4 Bilder
+        try:
+            response = requests.get(image_url, timeout=20)
+            response.raise_for_status()
+
+            with NamedTemporaryFile(delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                image_path = tmp_file.name
+
+            mime_type, _ = mimetypes.guess_type(image_path)
+            if not mime_type:
+                mime_type = "image/jpeg"
+
+            with open(image_path, "rb") as image_file:
+                media_info = mastodon.media_post(image_file, description="Automatisch generiertes Bild")
+                media_ids.append(media_info["id"])
+
+            os.unlink(image_path)  # Temporäre Datei löschen
+        except Exception as e:
+            print(f"Fehler beim Hochladen des Bildes: {e}")
+    return media_ids
+
 
 def clean_content_keep_links(content):
-    # Entferne Bilder-Tags, behalte Links-Tags
-    cleaned_content = re.sub(r'<img\s+[^>]*>', '', content)
-    # Entferne alle anderen HTML-Tags
-    cleaned_content = re.sub(r'<[^<]+?>', '', cleaned_content).strip()
-    # Entferne Zeilenumbrüche und Leerzeichen
-    cleaned_content = cleaned_content.replace('\n', ' ').replace('\r', '')
-    # Entferne doppelte Leerzeichen
-    cleaned_content = ' '.join(cleaned_content.split())
-    return cleaned_content
+    """Bereinigt den Inhalt und behält Links."""
+    cleaned_content = re.sub(r"<img\s+[^>]*>", "", content)
+    cleaned_content = re.sub(r"<[^<]+?>", "", cleaned_content).strip()
+    return " ".join(cleaned_content.split())
+
 
 def extract_image_urls_from_summary(summary):
-    # Extrahiere alle Bild-URLs aus dem HTML-Inhalt des summary-Felds
-    soup = BeautifulSoup(summary, 'html.parser')
-    image_urls = []
-    for img in soup.find_all('img'):
-        if 'src' in img.attrs:
-            image_urls.append(img['src'])
-    return image_urls
+    """Extrahiert Bild-URLs aus dem Summary-Feld."""
+    soup = BeautifulSoup(summary, "html.parser")
+    return [img["src"] for img in soup.find_all("img") if "src" in img.attrs]
 
-def main(feed_entries):
+
+def main():
+    """Hauptprogramm."""
     mastodon = Mastodon(
         access_token=access_token,
         api_base_url=api_base_url,
-        request_timeout=20  # Erhöhter Timeout für Mastodon-API
+        request_timeout=20
     )
-    
-    # Verarbeitete IDs aus Datei laden
+
+    # Verarbeitete IDs laden
     saved_entry_ids = get_saved_entry_ids()
+    feed_entries = fetch_feed_entries(feed_url)
 
-    entry_found = False
     for entry in feed_entries:
-        title = entry.get('title', '')
-        summary = entry.get('summary', '')
-        link = entry.get('link', '')
-        published = entry.get('published', '')
-        author = entry.get('author', 'Unbekannt')
-
-        # Extrahiere die Zahlen am Ende der URL
-        match = re.search(r'\d+$', link)
-        if match:
-            entry_id = match.group()
-        else:
-            entry_id = ""
-
-        # Prüfe, ob die entry_id bereits gespeichert ist
+        entry_id = generate_entry_id(entry)
         if entry_id in saved_entry_ids:
             continue  # Überspringe bereits verarbeitete Einträge
 
-        entry_found = True
+        title = entry.get("title", "")
+        summary = entry.get("summary", "")
+        link = entry.get("link", "")
+        published = entry.get("published", "")
+        clean_content = clean_content_keep_links(summary).strip()
 
-        # Bereinige den Inhalt
-        clean_content = clean_content_keep_links(summary)
-        clean_content = clean_content.replace("(Feed generated with FetchRSS)", "").strip()
+        image_urls = extract_image_urls_from_summary(summary)
 
-        # Veröffentlichungsdatum formatieren
+        # Erstelle den Beitragstext
         if published:
-            posted_time_utc = parse(published)
-            posted_time_local = posted_time_utc.astimezone()  # Lokale Zeitzone
-            posted_time = posted_time_local.strftime("%d.%m.%Y %H:%M")
+            posted_time = parse(published).astimezone().strftime("%d.%m.%Y %H:%M")
         else:
             posted_time = "Unbekannt"
 
-        # Bilder extrahieren
-        image_urls = extract_image_urls_from_summary(summary)
+        message = f"{clean_content}\n\n{link}\n\nVeröffentlicht am: {posted_time}"
 
-        # Nachricht erstellen
-        message = f"{clean_content} \n\n#Beşiktaş #Football #BJK\n\n{posted_time}"
+        # Beitrag posten
+        post_to_mastodon(mastodon, message, image_urls)
 
-        # Nachricht posten
-        if image_urls:
-            post_tweet_with_images(mastodon, message, image_urls)
-        else:
-            post_tweet(mastodon, message)
-
-        # Füge die entry_id zur Liste der gespeicherten entry_ids hinzu
+        # ID speichern
         saved_entry_ids.append(entry_id)
 
-        # Stelle sicher, dass nur die neuesten 5 Einträge gespeichert werden
-        if len(saved_entry_ids) > 5:
-            saved_entry_ids = saved_entry_ids[-5:]
+        # Begrenze die Anzahl gespeicherter IDs
+        if len(saved_entry_ids) > MAX_SAVED_ENTRIES:
+            saved_entry_ids = saved_entry_ids[-MAX_SAVED_ENTRIES:]
 
-        # Wartezeit von 1 Minute zwischen den Posts
+        # Speichere die aktualisierte Liste
+        save_entry_ids(saved_entry_ids)
+
+        # Wartezeit
         time.sleep(60)
 
-    # Speichere die IDs in die Datei
-    save_entry_ids(saved_entry_ids)
+    print("Alle neuen Einträge verarbeitet.")
 
-    if not entry_found:
-        print("Keine neuen Einträge gefunden.")
-
-    print("Erfolgreich beendet: Alle neuen Einträge wurden verarbeitet.")
 
 if __name__ == "__main__":
-    feed_entries = fetch_feed_entries(feed_url)
-    main(feed_entries)
+    main()
