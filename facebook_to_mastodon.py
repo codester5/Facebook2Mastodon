@@ -11,20 +11,20 @@ import mimetypes
 import re
 
 # Anpassbare Variablen
-api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
-access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
-feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
+api_base_url = os.getenv("MASTODON_API_URL")
+access_token = os.getenv("MASTODON_ACCESS_TOKEN")
+feed_url = os.getenv("FEED_URL")
 
-def get_saved_timestamps():
+def get_saved_ids():
     try:
-        with open("saved_timestamps.json", "r") as file:
+        with open("saved_entries.json", "r") as file:
             return json.load(file)
     except FileNotFoundError:
         return []
 
-def save_timestamps(timestamps):
-    with open("saved_timestamps.json", "w") as file:
-        json.dump(timestamps, file)
+def save_ids(saved_ids):
+    with open("saved_entries.json", "w") as file:
+        json.dump(saved_ids, file)
 
 def fetch_feed_entries(feed_url):
     feed = feedparser.parse(feed_url)
@@ -68,38 +68,31 @@ def truncate_text(text, published_info, max_length=500):
         text_cut = text_cut.rstrip() + "..."
     return f"{text_cut}\n\n{published_info}"
 
-def post_with_retries(mastodon, message, media_ids, retries=3, delay=180):
-    """Postet mit Wiederholungsversuchen bei Fehlern."""
-    for attempt in range(retries):
-        try:
-            mastodon.status_post(message, media_ids=media_ids, visibility='public')
-            print(f"INFO: Post erfolgreich nach {attempt + 1} Versuch(en).")
-            return True
-        except Exception as e:
-            print(f"ERROR: Fehler beim Posten (Versuch {attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1:  # Wenn noch Versuche übrig sind
-                print(f"INFO: Warte {delay} Sekunden vor dem nächsten Versuch.")
-                time.sleep(delay)
-    print("ERROR: Maximalanzahl an Versuchen erreicht. Überspringe diesen Eintrag.")
-    return False
-
 def main(feed_entries):
-    mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
-    saved_timestamps = get_saved_timestamps()
-    print(f"DEBUG: Gespeicherte Zeitstempel: {saved_timestamps}")
+    try:
+        mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
+        mastodon.verify_credentials()
+        print("DEBUG: Verbindung zur Mastodon-API erfolgreich.")
+    except Exception as e:
+        print(f"FEHLER: Verbindung zur Mastodon-API fehlgeschlagen: {e}")
+        return
+
+    saved_ids = get_saved_ids()
+    print(f"DEBUG: Gespeicherte IDs: {saved_ids}")
 
     for entry in feed_entries:
-        entry_time = parse(entry.published) if 'published' in entry else None
-        if not entry_time:
-            print(f"DEBUG: Kein Zeitstempel für Eintrag: {entry.link}")
+        link = entry.get('link', '')
+        entry_id = re.search(r'\d+$', link).group() if link else None
+        if not entry_id:
+            print(f"FEHLER: Keine ID für Eintrag: {link}")
             continue
 
-        if entry_time.isoformat() in saved_timestamps:
-            print(f"DEBUG: Eintrag {entry.link} übersprungen (bereits gepostet).")
+        if entry_id in saved_ids:
+            print(f"DEBUG: Eintrag {entry_id} übersprungen (bereits gepostet).")
             continue
 
         clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
-        published_info = f"Published on: {entry_time.strftime('%d/%m/%Y %H:%M')}"
+        published_info = f"Published on: {parse(entry.published).strftime('%d/%m/%Y %H:%M')}"
         message = truncate_text(clean_text, published_info)
 
         if not message.strip():
@@ -112,15 +105,21 @@ def main(feed_entries):
         if video_urls:
             media_ids += upload_media(mastodon, video_urls, media_type="video")
 
-        success = post_with_retries(mastodon, message, media_ids)
-        if success:
-            saved_timestamps.append(entry_time.isoformat())
-            if len(saved_timestamps) > 20:
-                saved_timestamps = saved_timestamps[-20:]
-            save_timestamps(saved_timestamps)
+        try:
+            mastodon.status_post(message, media_ids=media_ids, visibility='public')
+            print(f"INFO: Post erfolgreich: {link}")
+            saved_ids.append(entry_id)
+            if len(saved_ids) > 20:
+                saved_ids = saved_ids[-20:]
+            save_ids(saved_ids)
+        except Exception as e:
+            print(f"ERROR: Fehler beim Posten von {link}: {e}")
 
-        time.sleep(45)
+        time.sleep(15)
 
 if __name__ == "__main__":
     entries = fetch_feed_entries(feed_url)
-    main(entries)
+    if not entries:
+        print("FEHLER: Keine Feed-Einträge gefunden!")
+    else:
+        main(entries)
