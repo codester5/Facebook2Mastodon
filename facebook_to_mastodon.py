@@ -21,17 +21,23 @@ def fetch_feed_entries(feed_url):
     print(f"DEBUG: {len(feed.entries)} Einträge im RSS-Feed gefunden.")
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
-def get_last_post_date(mastodon):
-    """Abrufen des Datums des letzten geposteten Status."""
+def get_last_published_date(mastodon):
+    """Abrufen des Datums aus dem letzten geposteten Status."""
     try:
         user_info = mastodon.me()
         print(f"DEBUG: Erfolgreich verbunden als: {user_info['username']}")
         
         last_status = mastodon.account_statuses(user_info['id'], limit=1)
         if last_status:
-            last_post_date = parse(last_status[0]['created_at']).astimezone(datetime.timezone.utc)
-            print(f"DEBUG: Letzter geposteter Status (UTC): {last_post_date}")
-            return last_post_date
+            content = last_status[0]['content']
+            match = re.search(r"Published on: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
+            if match:
+                last_published_date = parse(match.group(1), dayfirst=True)
+                print(f"DEBUG: Letztes 'Published on'-Datum: {last_published_date}")
+                return last_published_date
+            else:
+                print("DEBUG: Kein 'Published on'-Datum im letzten Post gefunden.")
+                return None
         else:
             print("DEBUG: Keine vorherigen Posts gefunden.")
             return None
@@ -79,7 +85,7 @@ def truncate_text(text, published_info, max_length=500):
         text_cut = text_cut.rstrip() + "..."
     return f"{text_cut}\n\n{published_info}"
 
-def main(feed_entries, last_post_date):
+def main(feed_entries, last_published_date):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
     for entry in feed_entries:
         entry_time = parse(entry.published).astimezone(datetime.timezone.utc) if 'published' in entry else None
@@ -87,9 +93,9 @@ def main(feed_entries, last_post_date):
             print(f"DEBUG: Kein Zeitstempel für Eintrag: {entry.link}")
             continue
 
-        print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
-        if last_post_date and entry_time <= last_post_date:
-            print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten geposteten Datum).")
+        print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit: {entry_time}")
+        if last_published_date and entry_time <= last_published_date:
+            print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten 'Published on'-Datum).")
             continue
 
         clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
@@ -112,11 +118,14 @@ def main(feed_entries, last_post_date):
         except Exception as e:
             print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
 
+        # Aktualisiere das letzte Veröffentlichungsdatum
+        last_published_date = entry_time
+
         # Wartezeit zwischen den Posts
         time.sleep(15)
 
 if __name__ == "__main__":
     mastodon_client = Mastodon(access_token=access_token, api_base_url=api_base_url)
-    last_post_date = get_last_post_date(mastodon_client)
+    last_published_date = get_last_published_date(mastodon_client)
     entries = fetch_feed_entries(feed_url)
-    main(entries, last_post_date)
+    main(entries, last_published_date)
