@@ -96,7 +96,7 @@ def main(feed_entries, last_published_date):
 
         print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
         # Nur posten, wenn der neue Zeitstempel später als der letzte ist
-        if last_published_date and entry_time < last_published_date:
+        if last_published_date and entry_time <= last_published_date:
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten 'Published on'-Datum).")
             continue
 
