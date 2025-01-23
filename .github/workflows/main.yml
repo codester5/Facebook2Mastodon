@@ -1,4 +1,4 @@
-name: RSS to Mastodon
+name: RSS to Mastodon2
 
 on:
   schedule:
