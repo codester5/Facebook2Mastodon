@@ -32,8 +32,9 @@ def get_last_published_date(mastodon):
             content = last_status[0]['content']
             match = re.search(r"Published on: (\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
             if match:
-                last_published_date = parse(match.group(1), dayfirst=True)
-                print(f"DEBUG: Letztes 'Published on'-Datum: {last_published_date}")
+                # Parse und Konvertierung in UTC
+                last_published_date = parse(match.group(1), dayfirst=True).replace(tzinfo=datetime.timezone.utc)
+                print(f"DEBUG: Letztes 'Published on'-Datum (UTC): {last_published_date}")
                 return last_published_date
             else:
                 print("DEBUG: Kein 'Published on'-Datum im letzten Post gefunden.")
@@ -93,7 +94,7 @@ def main(feed_entries, last_published_date):
             print(f"DEBUG: Kein Zeitstempel für Eintrag: {entry.link}")
             continue
 
-        print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit: {entry_time}")
+        print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
         if last_published_date and entry_time <= last_published_date:
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten 'Published on'-Datum).")
             continue
