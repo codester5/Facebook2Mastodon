@@ -30,6 +30,7 @@ def save_timestamps(timestamps):
 # RSS-Feed einlesen
 def fetch_feed_entries(feed_url):
     feed = feedparser.parse(feed_url)
+    print(f"DEBUG: {len(feed.entries)} Einträge im RSS-Feed gefunden.")
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
 # Medien (Bilder/Videos) hochladen
@@ -70,16 +71,18 @@ def clean_content_and_extract_media(summary):
 def main(feed_entries):
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
     saved_timestamps = get_saved_timestamps()
+    print(f"DEBUG: Gespeicherte Zeitstempel: {saved_timestamps}")
 
     for entry in feed_entries:
         # Zeitstempel des Eintrags extrahieren
         entry_time = parse(entry.published) if 'published' in entry else None
         if not entry_time:
+            print(f"DEBUG: Kein Zeitstempel für Eintrag: {entry.link}")
             continue
 
-        # Prüfen, ob der Eintrag neuer ist als der letzte gespeichererte Zeitstempel
-        if saved_timestamps and entry_time <= parse(saved_timestamps[-1]):
-            print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten gespeicherten Zeitstempel).")
+        # Prüfen, ob der Eintrag neuer ist oder nicht gepostet wurde
+        if entry_time.isoformat() in saved_timestamps:
+            print(f"DEBUG: Eintrag {entry.link} übersprungen (bereits gepostet).")
             continue
 
         clean_text, image_urls, video_urls = clean_content_and_extract_media(entry.summary)
