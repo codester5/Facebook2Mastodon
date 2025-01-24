@@ -135,6 +135,9 @@ def main(feed_entries, last_published_date):
         # Aktualisiere das letzte Veröffentlichungsdatum
         last_published_date = entry_time
 
+        # **Debug: Aktualisierung nach jedem Eintrag**
+        print(f"DEBUG: Letztes Veröffentlichungsdatum nach Post (UTC): {last_published_date}")
+
         # Wartezeit zwischen den Posts
         time.sleep(15)
 
