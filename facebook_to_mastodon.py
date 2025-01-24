@@ -33,7 +33,6 @@ def get_last_published_date(mastodon):
             content = last_status[0]['content']
             match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})$", content)
             if match:
-                # Parse und Konvertierung in UTC
                 last_published_date = parse(match.group(1), dayfirst=True).replace(tzinfo=datetime.timezone.utc)
                 print(f"DEBUG: Letztes Veröffentlichungsdatum (UTC): {last_published_date}")
                 return last_published_date
@@ -48,38 +47,35 @@ def get_last_published_date(mastodon):
         return None
 
 def is_newer(last_date, new_date):
-    """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
+    """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise. Abbrechen, wenn ein Wert kleiner ist."""
     if not last_date:
         return True  # Kein vorheriger Post vorhanden
 
     # Schrittweiser Vergleich
+    if new_date.year < last_date.year:
+        return False
     if new_date.year > last_date.year:
         return True
-    elif new_date.year < last_date.year:
-        return False
 
+    if new_date.month < last_date.month:
+        return False
     if new_date.month > last_date.month:
         return True
-    elif new_date.month < last_date.month:
-        return False
 
+    if new_date.day < last_date.day:
+        return False
     if new_date.day > last_date.day:
         return True
-    elif new_date.day < last_date.day:
-        return False
 
+    if new_date.hour < last_date.hour:
+        return False
     if new_date.hour > last_date.hour:
         return True
-    elif new_date.hour < last_date.hour:
+
+    if new_date.minute <= last_date.minute:  # Falls gleich oder früher, auch überspringen
         return False
 
-    if new_date.minute > last_date.minute:
-        return True
-    elif new_date.minute < last_date.minute:
-        return False
-
-    # Alle Werte sind gleich
-    return False
+    return True  # Neuer Post, da Minuten größer sind
 
 def upload_media(mastodon, media_urls, media_type):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
