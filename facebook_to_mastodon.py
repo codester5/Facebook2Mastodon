@@ -52,13 +52,37 @@ def get_last_published_date(mastodon):
         return None
 
 def is_strictly_newer(last_date, new_date):
-    """Prüfen, ob der neue Eintrag strikt jünger als der letzte Post ist."""
+    """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
     if not last_date:
         return True  # Kein vorheriger Post vorhanden
-    # Vergleiche direkt, ob der neue Zeitstempel strikt größer ist
-    if new_date > last_date:
+
+    # Schrittweiser Vergleich
+    if new_date.year > last_date.year:
         return True
-    print(f"DEBUG: Neuer Zeitstempel {new_date} ist NICHT jünger als der letzte Zeitstempel {last_date}.")
+    elif new_date.year < last_date.year:
+        return False
+
+    if new_date.month > last_date.month:
+        return True
+    elif new_date.month < last_date.month:
+        return False
+
+    if new_date.day > last_date.day:
+        return True
+    elif new_date.day < last_date.day:
+        return False
+
+    if new_date.hour > last_date.hour:
+        return True
+    elif new_date.hour < last_date.hour:
+        return False
+
+    if new_date.minute > last_date.minute:
+        return True
+    elif new_date.minute < last_date.minute:
+        return False
+
+    # Alle Werte sind gleich
     return False
 
 def upload_media(mastodon, media_urls, media_type):
