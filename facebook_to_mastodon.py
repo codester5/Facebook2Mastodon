@@ -23,8 +23,8 @@ def fetch_feed_entries(feed_url):
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
 def extract_date_from_last_post(content):
-    """Extrahiere das Datum aus dem letzten Post im Format 'TT/MM/YYYY HH:MM'."""
-    match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})$", content)
+    """Extrahiere das Datum im Format 'TT/MM/YYYY HH:MM' aus dem letzten Post."""
+    match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
     if match:
         return match.group(1)  # Rückgabe des Datums als String
     print("DEBUG: Kein gültiges Datum im letzten Post gefunden.")
