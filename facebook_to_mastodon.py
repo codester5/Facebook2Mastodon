@@ -8,7 +8,6 @@ from dateutil.parser import parse
 from bs4 import BeautifulSoup
 import mimetypes
 import datetime
-import json
 import re
 
 # Anpassbare Variablen
@@ -16,37 +15,46 @@ api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
 feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
 hashtags = os.getenv("HASHTAGS")  # Hashtags
-timestamp_file = "last_published_date.json"  # Datei zur Speicherung des letzten Zeitstempels
-
-def load_last_published_date():
-    """Lade das letzte Veröffentlichungsdatum aus einer Datei."""
-    if os.path.exists(timestamp_file):
-        try:
-            with open(timestamp_file, "r") as file:
-                data = json.load(file)
-                timestamp = data.get("last_published_date")
-                if timestamp:
-                    return parse(timestamp).replace(tzinfo=datetime.timezone.utc)
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"FEHLER: Beschädigte Datei erkannt. Lösche die Datei: {e}")
-            os.remove(timestamp_file)
-    print("DEBUG: Kein gespeicherter Zeitstempel vorhanden.")
-    return None
-
-def save_last_published_date(last_date):
-    """Speichere das letzte Veröffentlichungsdatum in einer Datei."""
-    try:
-        with open(timestamp_file, "w") as file:
-            json.dump({"last_published_date": last_date.isoformat()}, file)
-        print(f"DEBUG: Letztes Veröffentlichungsdatum erfolgreich gespeichert: {last_date}")
-    except Exception as e:
-        print(f"FEHLER: Konnte das Veröffentlichungsdatum nicht speichern: {e}")
 
 def fetch_feed_entries(feed_url):
     """RSS-Feed abrufen und Einträge sortieren."""
     feed = feedparser.parse(feed_url)
     print(f"DEBUG: {len(feed.entries)} Einträge im RSS-Feed gefunden.")
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
+
+def extract_date_from_last_post(content):
+    """Extrahiere das Datum im Format 'TT/MM/YYYY HH:MM' aus dem letzten Post."""
+    match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
+    if match:
+        return match.group(1)  # Rückgabe des Datums als String
+    print("DEBUG: Kein gültiges Datum im letzten Post gefunden.")
+    return None
+
+def get_last_published_date(mastodon, retries=3, retry_delay=180):
+    """Abrufen des letzten veröffentlichten Datums. Bei Fehlern wird mehrfach versucht."""
+    for attempt in range(1, retries + 1):
+        try:
+            user_info = mastodon.me()
+            print(f"DEBUG: Erfolgreich verbunden als: {user_info['username']}")
+            last_status = mastodon.account_statuses(user_info['id'], limit=1)
+            if last_status:
+                content = last_status[0]['content']
+                last_date_str = extract_date_from_last_post(content)
+                if last_date_str:
+                    # Datumsstring in UTC-Zeitstempel umwandeln
+                    last_date = parse(last_date_str, dayfirst=True).replace(tzinfo=datetime.timezone.utc)
+                    print(f"DEBUG: Letztes Veröffentlichungsdatum (UTC): {last_date}")
+                    return last_date
+            print("DEBUG: Kein vorheriger Post mit gültigem Datum gefunden.")
+        except Exception as e:
+            print(f"FEHLER: Verbindung zur Mastodon-API fehlgeschlagen (Versuch {attempt}/{retries}): {e}")
+            if attempt < retries:
+                print(f"Warte {retry_delay} Sekunden, bevor erneut versucht wird...")
+                time.sleep(retry_delay)
+            else:
+                print("FEHLER: Maximale Anzahl an Versuchen erreicht. Breche ab.")
+                exit(1)  # Beende das Programm sicher
+    return None
 
 def is_strictly_newer(last_date, new_date):
     """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
@@ -78,8 +86,7 @@ def is_strictly_newer(last_date, new_date):
     elif new_date.minute < last_date.minute:
         return False
 
-    # Alle Werte sind gleich
-    return False
+    return False  # Alle Werte sind gleich
 
 def upload_media(mastodon, media_urls, media_type):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
@@ -156,13 +163,13 @@ def main(feed_entries, last_published_date):
 
         # Aktualisiere das letzte Veröffentlichungsdatum
         last_published_date = entry_time
-        save_last_published_date(last_published_date)
+        print(f"DEBUG: Letztes Veröffentlichungsdatum nach Post (UTC): {last_published_date}")
 
         # Wartezeit zwischen den Posts
         time.sleep(15)
 
 if __name__ == "__main__":
     mastodon_client = Mastodon(access_token=access_token, api_base_url=api_base_url)
-    last_published_date = load_last_published_date()
+    last_published_date = get_last_published_date(mastodon_client)
     entries = fetch_feed_entries(feed_url)
     main(entries, last_published_date)
