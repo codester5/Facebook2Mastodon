@@ -1,0 +1,5 @@
+feedparser
+Mastodon.py
+beautifulsoup4
+python-dateutil
+requests
