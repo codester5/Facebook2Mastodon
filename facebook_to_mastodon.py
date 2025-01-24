@@ -8,15 +8,39 @@ from dateutil.parser import parse
 from bs4 import BeautifulSoup
 import mimetypes
 import datetime
-import re
 import json
+import re
 
 # Anpassbare Variablen
 api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
 feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
 hashtags = os.getenv("HASHTAGS")  # Hashtags
-timestamp_file = "last_published_date.json"  # Datei zur Speicherung des Zeitstempels
+timestamp_file = "last_published_date.json"  # Datei zur Speicherung des letzten Zeitstempels
+
+def load_last_published_date():
+    """Lade das letzte Veröffentlichungsdatum aus einer Datei."""
+    if os.path.exists(timestamp_file):
+        try:
+            with open(timestamp_file, "r") as file:
+                data = json.load(file)
+                timestamp = data.get("last_published_date")
+                if timestamp:
+                    return parse(timestamp).replace(tzinfo=datetime.timezone.utc)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"FEHLER: Beschädigte Datei erkannt. Lösche die Datei: {e}")
+            os.remove(timestamp_file)
+    print("DEBUG: Kein gespeicherter Zeitstempel vorhanden.")
+    return None
+
+def save_last_published_date(last_date):
+    """Speichere das letzte Veröffentlichungsdatum in einer Datei."""
+    try:
+        with open(timestamp_file, "w") as file:
+            json.dump({"last_published_date": last_date.isoformat()}, file)
+        print(f"DEBUG: Letztes Veröffentlichungsdatum erfolgreich gespeichert: {last_date}")
+    except Exception as e:
+        print(f"FEHLER: Konnte das Veröffentlichungsdatum nicht speichern: {e}")
 
 def fetch_feed_entries(feed_url):
     """RSS-Feed abrufen und Einträge sortieren."""
@@ -24,29 +48,11 @@ def fetch_feed_entries(feed_url):
     print(f"DEBUG: {len(feed.entries)} Einträge im RSS-Feed gefunden.")
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
-def load_last_published_date():
-    """Lade das letzte Veröffentlichungsdatum aus einer Datei."""
-    if os.path.exists(timestamp_file):
-        with open(timestamp_file, "r") as file:
-            try:
-                timestamp = json.load(file).get("last_published_date")
-                if timestamp:
-                    return parse(timestamp).replace(tzinfo=datetime.timezone.utc)
-            except Exception as e:
-                print(f"FEHLER: Konnte gespeicherten Zeitstempel nicht laden: {e}")
-    return None
-
-def save_last_published_date(date):
-    """Speichere das letzte Veröffentlichungsdatum in eine Datei."""
-    with open(timestamp_file, "w") as file:
-        json.dump({"last_published_date": date.isoformat()}, file)
-
 def is_strictly_newer(last_date, new_date):
     """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
     if not last_date:
         return True  # Kein vorheriger Post vorhanden
 
-    # Schrittweiser Vergleich
     if new_date.year > last_date.year:
         return True
     elif new_date.year < last_date.year:
@@ -104,7 +110,6 @@ def clean_content_and_extract_media(summary):
     images = [img['src'] for img in soup.find_all('img') if 'src' in img.attrs]
     videos = [source['src'] for source in soup.find_all('source') if 'src' in source.attrs]
     text = soup.get_text().strip()
-    text = re.sub(r'https?://(www\.)?facebook\.com\S*', '', text)
     return text.strip(), images, videos
 
 def truncate_text(text, hashtags, date_info, max_length=500):
@@ -125,7 +130,6 @@ def main(feed_entries, last_published_date):
             continue
 
         print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
-        # Prüfen, ob der neue Eintrag strikt jünger als der letzte Post ist
         if not is_strictly_newer(last_published_date, entry_time):
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten Veröffentlichungsdatum).")
             continue
@@ -150,15 +154,15 @@ def main(feed_entries, last_published_date):
         except Exception as e:
             print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
 
-        # Aktualisiere das letzte Veröffentlichungsdatum und speichere es
+        # Aktualisiere das letzte Veröffentlichungsdatum
         last_published_date = entry_time
         save_last_published_date(last_published_date)
-        print(f"DEBUG: Letztes Veröffentlichungsdatum nach Post (UTC): {last_published_date}")
 
         # Wartezeit zwischen den Posts
         time.sleep(15)
 
 if __name__ == "__main__":
+    mastodon_client = Mastodon(access_token=access_token, api_base_url=api_base_url)
     last_published_date = load_last_published_date()
     entries = fetch_feed_entries(feed_url)
     main(entries, last_published_date)
