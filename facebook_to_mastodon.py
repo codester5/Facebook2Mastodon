@@ -55,7 +55,11 @@ def is_strictly_newer(last_date, new_date):
     """Prüfen, ob der neue Eintrag strikt jünger als der letzte Post ist."""
     if not last_date:
         return True  # Kein vorheriger Post vorhanden
-    return new_date > last_date  # Strikter Vergleich: Nur größer ist erlaubt
+    # Vergleiche direkt, ob der neue Zeitstempel strikt größer ist
+    if new_date > last_date:
+        return True
+    print(f"DEBUG: Neuer Zeitstempel {new_date} ist NICHT jünger als der letzte Zeitstempel {last_date}.")
+    return False
 
 def upload_media(mastodon, media_urls, media_type):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
@@ -134,8 +138,6 @@ def main(feed_entries, last_published_date):
 
         # Aktualisiere das letzte Veröffentlichungsdatum
         last_published_date = entry_time
-
-        # **Debug: Aktualisierung nach jedem Eintrag**
         print(f"DEBUG: Letztes Veröffentlichungsdatum nach Post (UTC): {last_published_date}")
 
         # Wartezeit zwischen den Posts
