@@ -9,12 +9,14 @@ from bs4 import BeautifulSoup
 import mimetypes
 import datetime
 import re
+import json
 
 # Anpassbare Variablen
 api_base_url = os.getenv("MASTODON_API_URL")  # Mastodon-Instanz
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")  # Access-Token
 feed_url = os.getenv("FEED_URL")  # RSS-Feed-URL
 hashtags = os.getenv("HASHTAGS")  # Hashtags
+timestamp_file = "last_published_date.json"  # Datei zur Speicherung des Zeitstempels
 
 def fetch_feed_entries(feed_url):
     """RSS-Feed abrufen und Einträge sortieren."""
@@ -22,34 +24,22 @@ def fetch_feed_entries(feed_url):
     print(f"DEBUG: {len(feed.entries)} Einträge im RSS-Feed gefunden.")
     return sorted(feed.entries, key=lambda x: parse(x.get('published', '')), reverse=False)
 
-def extract_date_from_last_post(content):
-    """Extrahiere das Datum im Format 'TT/MM/YYYY HH:MM' aus dem letzten Post."""
-    match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
-    if match:
-        return match.group(1)  # Rückgabe des Datums als String
-    print("DEBUG: Kein gültiges Datum im letzten Post gefunden.")
+def load_last_published_date():
+    """Lade das letzte Veröffentlichungsdatum aus einer Datei."""
+    if os.path.exists(timestamp_file):
+        with open(timestamp_file, "r") as file:
+            try:
+                timestamp = json.load(file).get("last_published_date")
+                if timestamp:
+                    return parse(timestamp).replace(tzinfo=datetime.timezone.utc)
+            except Exception as e:
+                print(f"FEHLER: Konnte gespeicherten Zeitstempel nicht laden: {e}")
     return None
 
-def get_last_published_date(mastodon):
-    """Abrufen des letzten veröffentlichten Datums."""
-    try:
-        user_info = mastodon.me()
-        print(f"DEBUG: Erfolgreich verbunden als: {user_info['username']}")
-        
-        last_status = mastodon.account_statuses(user_info['id'], limit=1)
-        if last_status:
-            content = last_status[0]['content']
-            last_date_str = extract_date_from_last_post(content)
-            if last_date_str:
-                # Datumsstring in UTC-Zeitstempel umwandeln
-                last_date = parse(last_date_str, dayfirst=True).replace(tzinfo=datetime.timezone.utc)
-                print(f"DEBUG: Letztes Veröffentlichungsdatum (UTC): {last_date}")
-                return last_date
-        print("DEBUG: Kein vorheriger Post mit gültigem Datum gefunden.")
-        return None
-    except Exception as e:
-        print(f"FEHLER: Verbindung zur Mastodon-API fehlgeschlagen: {e}")
-        return None
+def save_last_published_date(date):
+    """Speichere das letzte Veröffentlichungsdatum in eine Datei."""
+    with open(timestamp_file, "w") as file:
+        json.dump({"last_published_date": date.isoformat()}, file)
 
 def is_strictly_newer(last_date, new_date):
     """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
@@ -160,15 +150,15 @@ def main(feed_entries, last_published_date):
         except Exception as e:
             print(f"ERROR: Fehler beim Posten von {entry.link}: {e}")
 
-        # Aktualisiere das letzte Veröffentlichungsdatum
+        # Aktualisiere das letzte Veröffentlichungsdatum und speichere es
         last_published_date = entry_time
+        save_last_published_date(last_published_date)
         print(f"DEBUG: Letztes Veröffentlichungsdatum nach Post (UTC): {last_published_date}")
 
         # Wartezeit zwischen den Posts
         time.sleep(15)
 
 if __name__ == "__main__":
-    mastodon_client = Mastodon(access_token=access_token, api_base_url=api_base_url)
-    last_published_date = get_last_published_date(mastodon_client)
+    last_published_date = load_last_published_date()
     entries = fetch_feed_entries(feed_url)
     main(entries, last_published_date)
