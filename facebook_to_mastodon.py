@@ -51,11 +51,11 @@ def get_last_published_date(mastodon):
         print(f"FEHLER: Verbindung zur Mastodon-API fehlgeschlagen: {e}")
         return None
 
-def is_newer(last_date, new_date):
-    """Prüfen, ob der neue Eintrag jünger als der letzte Post ist."""
+def is_strictly_newer(last_date, new_date):
+    """Prüfen, ob der neue Eintrag strikt jünger als der letzte Post ist."""
     if not last_date:
         return True  # Kein vorheriger Post vorhanden
-    return new_date > last_date
+    return new_date > last_date  # Strikter Vergleich: Nur größer ist erlaubt
 
 def upload_media(mastodon, media_urls, media_type):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
@@ -107,8 +107,8 @@ def main(feed_entries, last_published_date):
             continue
 
         print(f"DEBUG: Eintrag {entry.link} - Veröffentlichungszeit (UTC): {entry_time}")
-        # Prüfen, ob der neue Eintrag gepostet werden soll
-        if not is_newer(last_published_date, entry_time):
+        # Prüfen, ob der neue Eintrag strikt jünger als der letzte Post ist
+        if not is_strictly_newer(last_published_date, entry_time):
             print(f"DEBUG: Eintrag {entry.link} übersprungen (älter oder gleich dem letzten Veröffentlichungsdatum).")
             continue
 
