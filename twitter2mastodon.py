@@ -23,6 +23,9 @@ twitter_url = os.getenv("TWITTER_URL")  # Muss gesetzt werden
 # Zeichenlimit pro Tröt
 TROET_LIMIT = 500
 
+# Pause zwischen Tröts in Sekunden
+TROET_PAUSE = 35
+
 
 def get_driver():
     """Erstelle und konfiguriere den Firefox WebDriver."""
@@ -66,9 +69,18 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
-                # Entferne das erste Bild, das vermutlich das Profilbild ist
-                if media_urls:
-                    media_urls = media_urls[1:]
+                # Verwerfe Profilbilder anhand der Größe
+                filtered_urls = []
+                for url in media_urls:
+                    if "twimg.com" in url:
+                        try:
+                            response = requests.get(url, stream=True)
+                            response.raise_for_status()
+                            if "small" not in url and response.headers.get("Content-Length", 0) > 5000:  # Größe in Bytes
+                                filtered_urls.append(url)
+                        except Exception as e:
+                            print(f"ERROR: Fehler beim Prüfen von {url}: {e}")
+                media_urls = filtered_urls
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
@@ -91,12 +103,12 @@ def scrape_twitter():
 
         # Scrolle nach unten
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)  # Warte, bis neue Tweets geladen sind
+        time.sleep(5)  # Wartezeit zwischen Scrolls erhöht
 
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             scroll_attempts += 1
-            if scroll_attempts > 2:  # Beende, wenn kein weiterer Inhalt geladen wird
+            if scroll_attempts > 4:  # Mehr Scroll-Wiederholungen
                 break
         else:
             scroll_attempts = 0
@@ -115,10 +127,16 @@ def upload_media(mastodon, media_urls):
             print(f"DEBUG: Lade Medien hoch: {media_url}")
             response = requests.get(media_url, timeout=20)
             response.raise_for_status()
+
+            # Prüfen, ob es sich um ein Video oder Bild handelt
+            mime_type = mimetypes.guess_type(media_url)[0]
+            if not mime_type:
+                mime_type = "image/jpeg"
+
             with NamedTemporaryFile(delete=False) as tmp_file:
                 tmp_file.write(response.content)
                 media_path = tmp_file.name
-            mime_type = mimetypes.guess_type(media_path)[0] or "image/jpeg"
+
             with open(media_path, "rb") as media_file:
                 media_info = mastodon.media_post(
                     media_file,
@@ -196,6 +214,8 @@ def main():
         try:
             mastodon.status_post(message, media_ids=media_ids, visibility="public")
             last_published_date = tweet["time"]
+            print(f"DEBUG: Warte {TROET_PAUSE} Sekunden vor dem nächsten Tröt...")
+            time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
         except Exception as e:
             print(f"ERROR: Fehler beim Posten des Tweets: {e}")
 
