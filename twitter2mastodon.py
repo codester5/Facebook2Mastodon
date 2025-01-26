@@ -50,14 +50,15 @@ def scrape_twitter():
             text_div = article.find("div", {"data-testid": "tweetText"})
             tweet_text = text_div.get_text(strip=True) if text_div else "Kein Text gefunden"
 
-            # Extrahiere Medien-URLs (Bilder und Videos)
+            # Extrahiere Medien-URLs
             media_urls = []
-            for img in article.find_all("img", {"alt": "Bild"}):
-                media_urls.append(img["src"])
+            for img in article.find_all("img", {"src": True}):
+                if "twimg.com" in img["src"]:
+                    media_urls.append(img["src"])
 
             for video in article.find_all("video"):
-                source = video.find("source")
-                if source and source.get("src"):
+                source = video.find("source", {"src": True})
+                if source and "twimg.com" in source["src"]:
                     media_urls.append(source["src"])
 
             # Extrahiere den Zeitstempel
@@ -83,6 +84,7 @@ def upload_media(mastodon, media_urls):
     media_ids = []
     for media_url in media_urls[:4]:  # Maximal 4 Dateien
         try:
+            print(f"DEBUG: Lade Medien hoch: {media_url}")
             response = requests.get(media_url, timeout=20)
             response.raise_for_status()
             with NamedTemporaryFile(delete=False) as tmp_file:
@@ -99,6 +101,7 @@ def upload_media(mastodon, media_urls):
             os.unlink(media_path)
         except Exception as e:
             print(f"ERROR: Fehler beim Hochladen von Medien: {e}")
+    print(f"DEBUG: Hochgeladene Medien-IDs: {media_ids}")
     return media_ids
 
 
