@@ -42,27 +42,32 @@ def scrape_twitter():
     """Scrapt die Twitter-Seite nach Tweets, Medien und Zeitstempeln."""
     driver = get_driver()
     driver.get(twitter_url)
-    time.sleep(5)  # Wartezeit, bis die Seite geladen ist
+    time.sleep(5)  # Warte, bis die Seite geladen ist
 
     tweets = []
+    last_height = driver.execute_script("return document.body.scrollHeight")
     scroll_attempts = 0
 
     while True:
+        # Extrahiere den HTML-Quellcode
         soup = BeautifulSoup(driver.page_source, "html.parser")
         print("DEBUG: Scraping neue Tweets...")
         found_tweets = 0
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
+                # Extrahiere den Text mit Emojis an der richtigen Stelle
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
-                    tweet_html = "".join(str(tag) for tag in text_div.contents)
-                    tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
-
-                # Emojis aus img alt-Attributen hinzufügen
-                for img in text_div.find_all("img", {"alt": True}):
-                    tweet_text += img["alt"]
+                    tweet_text = ""
+                    for element in text_div.contents:
+                        if element.name == "img" and element.get("alt"):
+                            tweet_text += element["alt"]
+                        elif hasattr(element, "text"):
+                            tweet_text += element.text
+                        else:
+                            tweet_text += str(element)
 
                 # Extrahiere Medien-URLs
                 media_urls = []
@@ -75,10 +80,12 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
+                # Verwerfe das Profilbild explizit anhand der URL
                 if media_urls and "profile_images" in media_urls[0]:
                     print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
-                    media_urls = media_urls[1:]
+                    media_urls = media_urls[1:]  # Entferne das erste Bild
 
+                # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
                 tweet_time = (
                     datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -89,6 +96,7 @@ def scrape_twitter():
                     print("DEBUG: Zeitstempel fehlt. Überspringe Tweet.")
                     continue
 
+                # Vermeide Duplikate
                 if any(tweet["time"] == tweet_time for tweet in tweets):
                     print(f"DEBUG: Duplikat gefunden. Überspringe Tweet mit Zeitstempel {tweet_time}.")
                     continue
@@ -102,24 +110,23 @@ def scrape_twitter():
                 continue
 
         print(f"DEBUG: {found_tweets} Tweets in dieser Iteration gefunden.")
-
-        # Schrittweises Scrollen
-        for _ in range(10):  # Scrollt in 10 kleinen Schritten
-            driver.execute_script("window.scrollBy(0, window.innerHeight / 10);")
-            time.sleep(0.5)  # Kurze Pause zwischen den Schritten
+        # Scrolle langsam nach unten
+        driver.execute_script("window.scrollBy(0, window.innerHeight / 2);")
+        time.sleep(2)  # Reduzierte Wartezeit für besseres Scrollen
 
         new_height = driver.execute_script("return document.body.scrollHeight")
-        if new_height == driver.execute_script("return window.scrollY") + driver.execute_script("return window.innerHeight"):
+        if new_height == last_height:
             scroll_attempts += 1
-            if scroll_attempts > 4:
+            if scroll_attempts > 4:  # Nach 4 Versuchen abbrechen
                 print("DEBUG: Ende des Scrollens erreicht.")
                 break
         else:
             scroll_attempts = 0
+            last_height = new_height
 
     driver.quit()
     print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
-    return sorted(tweets, key=lambda x: x["time"])
+    return sorted(tweets, key=lambda x: x["time"])  # Tweets nach Zeit sortieren
 
 
 def upload_media(mastodon, media_urls):
@@ -131,6 +138,7 @@ def upload_media(mastodon, media_urls):
             response = requests.get(media_url, timeout=20)
             response.raise_for_status()
 
+            # Prüfen, ob es sich um ein Video oder Bild handelt
             mime_type = mimetypes.guess_type(media_url)[0]
             if not mime_type:
                 mime_type = "image/jpeg"
@@ -218,7 +226,7 @@ def main():
             mastodon.status_post(message, media_ids=media_ids, visibility="public")
             last_published_date = tweet["time"]
             print(f"DEBUG: Warte {TROET_PAUSE} Sekunden vor dem nächsten Tröt...")
-            time.sleep(TROET_PAUSE)
+            time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
         except Exception as e:
             print(f"ERROR: Fehler beim Posten des Tweets: {e}")
 
