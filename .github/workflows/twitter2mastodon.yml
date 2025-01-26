@@ -1,7 +1,7 @@
 name: Twitter to Mastodon Bot
 
 on:
-  workflow_dispatch: # Ermöglicht manuelles Auslösen des Workflows
+  workflow_dispatch: # Manuelle Ausführung
 
 jobs:
   run-twitter-to-mastodon:
@@ -14,7 +14,18 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.9"  # Python-Version festlegen
+          python-version: "3.9"
+
+      - name: Install Chrome and ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          sudo apt-get install -y google-chrome-stable
+          CHROME_DRIVER_VERSION=$(wget -qO- https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
+          wget -N https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip
+          unzip chromedriver_linux64.zip
+          sudo mv chromedriver /usr/local/bin/
+          chmod +x /usr/local/bin/chromedriver
 
       - name: Install dependencies
         run: |
