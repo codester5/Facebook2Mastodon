@@ -18,8 +18,20 @@ jobs:
 
       - name: Install Firefox and GeckoDriver for macOS
         run: |
+          # Installiere Firefox
           brew install --cask firefox
+          
+          # Installiere GeckoDriver
           brew install geckodriver
+          
+          # Zeige Versionen zur Überprüfung
+          echo "Installierte Versionen:"
+          firefox --version
+          geckodriver --version
+
+          # Sicherstellen, dass GeckoDriver im PATH liegt
+          echo "Prüfe GeckoDriver-Position:"
+          which geckodriver
 
       - name: Install dependencies
         run: |
