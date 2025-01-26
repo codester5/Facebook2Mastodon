@@ -54,7 +54,7 @@ def scrape_twitter():
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
-                # Extrahiere den Text und behalte Emojis und Struktur bei
+                # Extrahiere den Text mit Struktur und Emojis
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
@@ -72,12 +72,10 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
-                # Verwerfe das Profilbild explizit anhand seiner Position oder URL
-                if media_urls:
-                    profile_image_url = media_urls[0]
-                    if "profile_images" in profile_image_url:
-                        print(f"DEBUG: Entferne das Profilbild: {profile_image_url}")
-                        media_urls = media_urls[1:]
+                # Verwerfe das Profilbild explizit anhand der URL
+                if media_urls and "profile_images" in media_urls[0]:
+                    print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
+                    media_urls = media_urls[1:]  # Entferne das erste Bild
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
