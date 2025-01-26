@@ -60,6 +60,11 @@ def scrape_twitter():
                     tweet_html = "".join(str(tag) for tag in text_div.contents)
                     tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
 
+                # Emojis aus img alt-Attributen hinzufügen
+                for img in text_div.find_all("img", {"alt": True}):
+                    tweet_text += img["alt"]
+
+                # Extrahiere Medien-URLs
                 media_urls = []
                 for img in article.find_all("img", {"src": True}):
                     if "twimg.com" in img["src"]:
