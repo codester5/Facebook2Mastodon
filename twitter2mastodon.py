@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 import re
 import shutil
+import subprocess
 
 # Mastodon-Konfigurationsvariablen
 api_base_url = os.getenv("MASTODON_API_URL")
@@ -51,8 +52,6 @@ def scrape_twitter():
     while True:
         # Extrahiere den HTML-Quellcode
         soup = BeautifulSoup(driver.page_source, "html.parser")
-        print("DEBUG: Scraping neue Tweets...")
-        found_tweets = 0
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
@@ -60,7 +59,6 @@ def scrape_twitter():
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
-                    tweet_text = ""
                     for element in text_div.contents:
                         if element.name == "img" and element.get("alt"):
                             tweet_text += element["alt"]
@@ -69,22 +67,9 @@ def scrape_twitter():
                         else:
                             tweet_text += str(element)
 
-                # Extrahiere Medien-URLs
-                media_urls = []
-                for img in article.find_all("img", {"src": True}):
-                    if "twimg.com" in img["src"]:
-                        media_urls.append(img["src"])
-
-                for video in article.find_all("video"):
-                    source = video.find("source", {"src": True})
-                    if source and "twimg.com" in source["src"]:
-                        video_url = source["src"].replace("blob:", "")  # Entferne 'blob:'
-                        media_urls.append(video_url)
-
-                # Verwerfe das Profilbild explizit anhand der URL
-                if media_urls and "profile_images" in media_urls[0]:
-                    print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
-                    media_urls = media_urls[1:]  # Entferne das erste Bild
+                # Extrahiere die Artikel-URL (für Videos via yt-dlp)
+                article_url_tag = article.find("a", {"href": True})
+                article_url = f"https://twitter.com{article_url_tag['href']}" if article_url_tag else None
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
@@ -94,23 +79,17 @@ def scrape_twitter():
                     else None
                 )
                 if not tweet_time:
-                    print("DEBUG: Zeitstempel fehlt. Überspringe Tweet.")
                     continue
 
                 # Vermeide Duplikate
                 if any(tweet["time"] == tweet_time for tweet in tweets):
-                    print(f"DEBUG: Duplikat gefunden. Überspringe Tweet mit Zeitstempel {tweet_time}.")
                     continue
 
-                tweet = {"text": tweet_text, "media": media_urls, "time": tweet_time}
-                print(f"DEBUG: Gefundener Tweet: {tweet}")
+                tweet = {"text": tweet_text, "url": article_url, "time": tweet_time}
                 tweets.append(tweet)
-                found_tweets += 1
             except Exception as e:
-                print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
                 continue
 
-        print(f"DEBUG: {found_tweets} Tweets in dieser Iteration gefunden.")
         # Scrolle langsam nach unten
         driver.execute_script("window.scrollBy(0, window.innerHeight / 2);")
         time.sleep(2)  # Reduzierte Wartezeit für besseres Scrollen
@@ -119,46 +98,45 @@ def scrape_twitter():
         if new_height == last_height:
             scroll_attempts += 1
             if scroll_attempts > 4:  # Nach 4 Versuchen abbrechen
-                print("DEBUG: Ende des Scrollens erreicht.")
                 break
         else:
             scroll_attempts = 0
             last_height = new_height
 
     driver.quit()
-    print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
     return sorted(tweets, key=lambda x: x["time"])  # Tweets nach Zeit sortieren
 
 
-def upload_media(mastodon, media_urls):
-    """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
+def download_video_with_ytdlp(tweet_url):
+    """Lädt ein Video mithilfe von yt-dlp herunter und gibt den lokalen Pfad zurück."""
+    try:
+        with NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+            temp_path = tmp_file.name
+        subprocess.run(
+            ["yt-dlp", "-f", "best[ext=mp4]", tweet_url, "-o", temp_path],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return temp_path
+    except Exception as e:
+        return None
+
+
+def upload_media(mastodon, tweet):
+    """Verarbeitet Medien-Uploads (Videos über yt-dlp, Bilder direkt)."""
     media_ids = []
-    for media_url in media_urls[:4]:  # Maximal 4 Dateien
-        try:
-            print(f"DEBUG: Lade Medien hoch: {media_url}")
-            response = requests.get(media_url, timeout=20)
-            response.raise_for_status()
-
-            # Prüfen, ob es sich um ein Video oder Bild handelt
-            mime_type = mimetypes.guess_type(media_url)[0]
-            if not mime_type:
-                mime_type = "image/jpeg"
-
-            with NamedTemporaryFile(delete=False) as tmp_file:
-                tmp_file.write(response.content)
-                media_path = tmp_file.name
-
-            with open(media_path, "rb") as media_file:
+    if tweet["url"]:  # Versuch, ein Video herunterzuladen
+        video_path = download_video_with_ytdlp(tweet["url"])
+        if video_path:
+            with open(video_path, "rb") as video_file:
                 media_info = mastodon.media_post(
-                    media_file,
-                    mime_type=mime_type,
-                    description="Automatisch generiertes Bild/Video"
+                    video_file,
+                    mime_type="video/mp4",
+                    description="Automatisch generiertes Video"
                 )
                 media_ids.append(media_info["id"])
-            os.unlink(media_path)
-        except Exception as e:
-            print(f"ERROR: Fehler beim Hochladen von Medien: {e}")
-    print(f"DEBUG: Hochgeladene Medien-IDs: {media_ids}")
+            os.unlink(video_path)
     return media_ids
 
 
@@ -216,20 +194,18 @@ def main():
     tweets = scrape_twitter()
     for tweet in tweets:
         if not is_strictly_newer(last_published_date, tweet["time"]):
-            print(f"DEBUG: Tweet mit Zeitstempel {tweet['time']} übersprungen (älter oder gleich letzter veröffentlichter Tweet).")
             continue
 
         date_info = tweet["time"].strftime("%d/%m/%Y %H:%M")
         message = truncate_text(tweet["text"], hashtags, date_info)
-        media_ids = upload_media(mastodon, tweet["media"])
+        media_ids = upload_media(mastodon, tweet)
 
         try:
             mastodon.status_post(message, media_ids=media_ids, visibility="public")
             last_published_date = tweet["time"]
-            print(f"DEBUG: Warte {TROET_PAUSE} Sekunden vor dem nächsten Tröt...")
-            time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
+            time.sleep(TROET_PAUSE)
         except Exception as e:
-            print(f"ERROR: Fehler beim Posten des Tweets: {e}")
+            continue
 
 
 if __name__ == "__main__":
