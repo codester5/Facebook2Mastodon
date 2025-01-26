@@ -54,9 +54,13 @@ def scrape_twitter():
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
-                # Extrahiere den Text
+                # Extrahiere den Text und behalte die Struktur (Absätze, Einrückungen)
                 text_div = article.find("div", {"data-testid": "tweetText"})
-                tweet_text = text_div.get_text(strip=True) if text_div else "Kein Text gefunden"
+                tweet_text = ""
+                if text_div:
+                    tweet_text = "\n".join(
+                        line.get_text(strip=True) for line in text_div.find_all(["span", "p", "br"])
+                    )
 
                 # Extrahiere Medien-URLs
                 media_urls = []
@@ -69,18 +73,11 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
-                # Verwerfe Profilbilder anhand der Größe
-                filtered_urls = []
-                for url in media_urls:
-                    if "twimg.com" in url:
-                        try:
-                            response = requests.get(url, stream=True)
-                            response.raise_for_status()
-                            if "small" not in url and response.headers.get("Content-Length", 0) > 5000:  # Größe in Bytes
-                                filtered_urls.append(url)
-                        except Exception as e:
-                            print(f"ERROR: Fehler beim Prüfen von {url}: {e}")
-                media_urls = filtered_urls
+                # Entferne explizit das Profilbild
+                if media_urls:
+                    profile_image_url = media_urls[0]  # Erstes Bild ist oft das Profilbild
+                    print(f"DEBUG: Entferne das Profilbild: {profile_image_url}")
+                    media_urls = media_urls[1:]  # Entferne nur das erste Bild
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
