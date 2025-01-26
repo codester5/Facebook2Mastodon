@@ -40,42 +40,70 @@ def scrape_twitter():
     driver = get_driver()
     driver.get(twitter_url)
     time.sleep(5)  # Warte, bis die Seite geladen ist
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    driver.quit()
 
     tweets = []
-    for article in soup.find_all("article", {"role": "article"}):
-        try:
-            # Extrahiere den Text
-            text_div = article.find("div", {"data-testid": "tweetText"})
-            tweet_text = text_div.get_text(strip=True) if text_div else "Kein Text gefunden"
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    scroll_attempts = 0
 
-            # Extrahiere Medien-URLs
-            media_urls = []
-            for img in article.find_all("img", {"src": True}):
-                if "twimg.com" in img["src"]:
-                    media_urls.append(img["src"])
+    while True:
+        # Extrahiere den HTML-Quellcode
+        soup = BeautifulSoup(driver.page_source, "html.parser")
 
-            for video in article.find_all("video"):
-                source = video.find("source", {"src": True})
-                if source and "twimg.com" in source["src"]:
-                    media_urls.append(source["src"])
+        for article in soup.find_all("article", {"role": "article"}):
+            try:
+                # Extrahiere den Text
+                text_div = article.find("div", {"data-testid": "tweetText"})
+                tweet_text = text_div.get_text(strip=True) if text_div else "Kein Text gefunden"
 
-            # Extrahiere den Zeitstempel
-            time_tag = article.find("time")
-            tweet_time = (
-                datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
-                if time_tag and time_tag.get("datetime")
-                else None
-            )
-            if not tweet_time:
+                # Extrahiere Medien-URLs
+                media_urls = []
+                for img in article.find_all("img", {"src": True}):
+                    if "twimg.com" in img["src"]:
+                        media_urls.append(img["src"])
+
+                for video in article.find_all("video"):
+                    source = video.find("source", {"src": True})
+                    if source and "twimg.com" in source["src"]:
+                        media_urls.append(source["src"])
+
+                # Entferne das erste Bild, das vermutlich das Profilbild ist
+                if media_urls:
+                    media_urls = media_urls[1:]
+
+                # Extrahiere den Zeitstempel
+                time_tag = article.find("time")
+                tweet_time = (
+                    datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
+                    if time_tag and time_tag.get("datetime")
+                    else None
+                )
+                if not tweet_time:
+                    continue
+
+                # Duplikate vermeiden
+                if any(tweet["time"] == tweet_time for tweet in tweets):
+                    continue
+
+                tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
+            except Exception as e:
+                print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
                 continue
 
-            tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
-        except Exception as e:
-            print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
-            continue
+        # Scrolle nach unten
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)  # Warte, bis neue Tweets geladen sind
 
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            scroll_attempts += 1
+            if scroll_attempts > 2:  # Beende, wenn kein weiterer Inhalt geladen wird
+                break
+        else:
+            scroll_attempts = 0
+            last_height = new_height
+
+    driver.quit()
+    print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
     return sorted(tweets, key=lambda x: x["time"])  # Tweets nach Zeit sortieren
 
 
