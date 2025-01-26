@@ -3,8 +3,8 @@ from bs4 import BeautifulSoup
 from mastodon import Mastodon
 from tempfile import NamedTemporaryFile
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 import os
 import mimetypes
 import time
@@ -24,14 +24,11 @@ TROET_LIMIT = 500
 
 
 def get_driver():
-    """Erstelle und konfiguriere den Selenium WebDriver."""
+    """Erstelle und konfiguriere den Firefox WebDriver."""
     options = Options()
-    options.add_argument("--headless")  # Ohne GUI
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    service = Service("/usr/local/bin/chromedriver")  # Anpassen, falls lokal ein anderer Pfad verwendet wird
-    return webdriver.Chrome(service=service, options=options)
+    options.headless = True  # Ohne GUI
+    service = Service("/usr/local/bin/geckodriver")  # Pfad zu GeckoDriver
+    return webdriver.Firefox(service=service, options=options)
 
 
 def scrape_twitter():
@@ -39,7 +36,7 @@ def scrape_twitter():
     if not twitter_url:
         raise ValueError("FEHLER: TWITTER_URL ist nicht gesetzt.")
     
-    print(f"DEBUG: Scraping Twitter-Seite mit Selenium: {twitter_url}")
+    print(f"DEBUG: Scraping Twitter-Seite mit Firefox: {twitter_url}")
     driver = get_driver()
     driver.get(twitter_url)
     time.sleep(5)  # Warte, bis die Seite vollständig geladen ist
