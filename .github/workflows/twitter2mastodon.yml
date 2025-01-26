@@ -20,14 +20,11 @@ jobs:
         run: |
           brew install --cask firefox
           brew install geckodriver
-
-      - name: Verify Installations
-        run: |
           echo "Firefox-Version:"
           firefox --version
           echo "GeckoDriver-Version:"
           geckodriver --version
-          echo "GeckoDriver-Standort:"
+          echo "GeckoDriver-Pfad:"
           which geckodriver
 
       - name: Install dependencies
