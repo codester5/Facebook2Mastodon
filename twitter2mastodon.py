@@ -11,7 +11,7 @@ import re
 # Mastodon-Konfigurationsvariablen
 api_base_url = os.getenv("MASTODON_API_URL")
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")
-hashtags = os.getenv("HASHTAGS")  # Standard-Hashtags
+hashtags = os.getenv("HASHTAGS", "#Besiktas")  # Standard-Hashtags
 
 # Twitter-URL aus Umgebungsvariablen
 twitter_url = os.getenv("TWITTER_URL")  # Muss gesetzt werden
@@ -23,12 +23,17 @@ TROET_LIMIT = 500
 def get_last_published_date(mastodon):
     """Abrufen des letzten veröffentlichten Datums von Mastodon."""
     user_info = mastodon.me()
+    print(f"DEBUG: Verbunden als Mastodon-Nutzer: {user_info['username']}")
     last_status = mastodon.account_statuses(user_info['id'], limit=1)
     if last_status:
         content = last_status[0]['content']
+        print(f"DEBUG: Letzter Mastodon-Tröt: {content}")
         match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
         if match:
-            return datetime.strptime(match.group(1), "%d/%m/%Y %H:%M")
+            timestamp = datetime.strptime(match.group(1), "%d/%m/%Y %H:%M")
+            print(f"DEBUG: Letzter veröffentlichter Zeitstempel: {timestamp}")
+            return timestamp
+    print("DEBUG: Kein vorheriger Zeitstempel gefunden.")
     return None
 
 
@@ -62,6 +67,7 @@ def scrape_twitter():
     if not twitter_url:
         raise ValueError("FEHLER: TWITTER_URL ist nicht gesetzt.")
     headers = {"User-Agent": "Mozilla/5.0"}
+    print(f"DEBUG: Scraping Twitter-Seite: {twitter_url}")
     response = requests.get(twitter_url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -72,10 +78,12 @@ def scrape_twitter():
             media_urls = [img["src"] for img in tweet.find_all("img") if "src" in img.attrs]
             tweet_time = datetime.now()  # Placeholder für Zeitstempel
             tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
+            print(f"DEBUG: Gefundener Tweet: {tweet_text[:50]}... mit {len(media_urls)} Medien.")
         except Exception as e:
             print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
             continue
 
+    print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
     return tweets
 
 
@@ -84,6 +92,7 @@ def upload_media(mastodon, media_urls):
     media_ids = []
     for media_url in media_urls[:4]:  # Maximal 4 Dateien
         try:
+            print(f"DEBUG: Lade Medien hoch: {media_url}")
             response = requests.get(media_url, timeout=20)
             response.raise_for_status()
             with NamedTemporaryFile(delete=False) as tmp_file:
@@ -100,6 +109,7 @@ def upload_media(mastodon, media_urls):
             os.unlink(media_path)
         except Exception as e:
             print(f"ERROR: Fehler beim Hochladen von Medien: {e}")
+    print(f"DEBUG: Hochgeladene Medien-IDs: {media_ids}")
     return media_ids
 
 
@@ -110,7 +120,9 @@ def truncate_text(text, hashtags, date_info, max_length=500):
     text_cut = text[:max_length - reserved_length]
     if len(text) > len(text_cut):
         text_cut = text_cut.rstrip() + "..."
-    return f"{text_cut}\n\n{hashtags_part}{date_info}".strip()
+    truncated_text = f"{text_cut}\n\n{hashtags_part}{date_info}".strip()
+    print(f"DEBUG: Trunkierter Text: {truncated_text[:50]}...")
+    return truncated_text
 
 
 def main():
@@ -119,6 +131,7 @@ def main():
 
     tweets = scrape_twitter()
     for tweet in tweets:
+        print(f"DEBUG: Verarbeite Tweet mit Zeitstempel: {tweet['time']}")
         if not is_strictly_newer(last_published_date, tweet["time"]):
             print("DEBUG: Tweet übersprungen (älter oder gleich dem letzten Veröffentlichungsdatum).")
             continue
