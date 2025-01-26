@@ -87,7 +87,7 @@ def scrape_twitter():
                 if not tweet_time:
                     continue
 
-                # Duplikate vermeiden
+                # Vermeide Duplikate
                 if any(tweet["time"] == tweet_time for tweet in tweets):
                     continue
 
@@ -103,7 +103,7 @@ def scrape_twitter():
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             scroll_attempts += 1
-            if scroll_attempts > 4:  # Mehr Scroll-Wiederholungen
+            if scroll_attempts > 4:  # Nach 4 Versuchen abbrechen
                 break
         else:
             scroll_attempts = 0
