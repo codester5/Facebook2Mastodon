@@ -1,10 +1,10 @@
 name: Twitter to Mastodon Bot
 
 on:
+  workflow_dispatch: # Manuelle Ausführung
   schedule:
-    - cron: '0 6 * * *'    # Einmal täglich um 06:00 Uhr
-    - cron: '0 13-22 * * *' # Stündlich von 13:00 bis 22:00 Uhr
-  workflow_dispatch:        # Manuelle Ausführung
+    - cron: "0 13-22 * * *" # Stündlich zwischen 13 und 22 Uhr
+    - cron: "0 6 * * *"     # Einmal um 6 Uhr morgens
 
 jobs:
   run-twitter-to-mastodon:
@@ -34,6 +34,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install yt-dlp # Installiere yt-dlp für Videoverarbeitung
 
       - name: Run Twitter to Mastodon Script
         env:
@@ -43,4 +44,4 @@ jobs:
           HASHTAGS: ${{ secrets.HASHTAGS }}
         run: |
           echo "Starting the script..."
-          python twitter2mastodon.py || echo "Script execution failed. Check logs above for details."
+          python twitter2mastodon.py || echo "Script execution failed. Check debug logs above for details."
