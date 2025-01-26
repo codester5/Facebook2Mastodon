@@ -11,7 +11,6 @@ import time
 from datetime import datetime
 import re
 import shutil
-import subprocess
 
 # Mastodon-Konfigurationsvariablen
 api_base_url = os.getenv("MASTODON_API_URL")
@@ -40,7 +39,7 @@ def get_driver():
 
 
 def scrape_twitter():
-    """Scrapt die Twitter-Seite nach Tweets, Medien und Zeitstempeln."""
+    """Scrapt die Twitter-Seite nach Tweets, Bildern und Zeitstempeln."""
     driver = get_driver()
     driver.get(twitter_url)
     time.sleep(5)  # Warte, bis die Seite geladen ist
@@ -52,10 +51,12 @@ def scrape_twitter():
     while True:
         # Extrahiere den HTML-Quellcode
         soup = BeautifulSoup(driver.page_source, "html.parser")
+        print("DEBUG: Scraping neue Tweets...")
+        found_tweets = 0
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
-                # Extrahiere den Text mit Emojis an der richtigen Stelle
+                # Text mit Emojis
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
@@ -67,11 +68,13 @@ def scrape_twitter():
                         else:
                             tweet_text += str(element)
 
-                # Extrahiere die Artikel-URL (für Videos via yt-dlp)
-                article_url_tag = article.find("a", {"href": True})
-                article_url = f"https://twitter.com{article_url_tag['href']}" if article_url_tag else None
+                # Extrahiere Medien-URLs (Bilder priorisieren)
+                media_urls = []
+                for img in article.find_all("img", {"src": True}):
+                    if "twimg.com" in img["src"] and "profile_images" not in img["src"]:
+                        media_urls.append(img["src"])
 
-                # Extrahiere den Zeitstempel
+                # Zeitstempel extrahieren
                 time_tag = article.find("time")
                 tweet_time = (
                     datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -79,17 +82,23 @@ def scrape_twitter():
                     else None
                 )
                 if not tweet_time:
+                    print("DEBUG: Zeitstempel fehlt. Überspringe Tweet.")
                     continue
 
                 # Vermeide Duplikate
                 if any(tweet["time"] == tweet_time for tweet in tweets):
+                    print(f"DEBUG: Duplikat gefunden. Überspringe Tweet mit Zeitstempel {tweet_time}.")
                     continue
 
-                tweet = {"text": tweet_text, "url": article_url, "time": tweet_time}
+                tweet = {"text": tweet_text, "media": media_urls, "time": tweet_time}
+                print(f"DEBUG: Gefundener Tweet: {tweet}")
                 tweets.append(tweet)
+                found_tweets += 1
             except Exception as e:
+                print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
                 continue
 
+        print(f"DEBUG: {found_tweets} Tweets in dieser Iteration gefunden.")
         # Scrolle langsam nach unten
         driver.execute_script("window.scrollBy(0, window.innerHeight / 2);")
         time.sleep(2)  # Reduzierte Wartezeit für besseres Scrollen
@@ -98,114 +107,63 @@ def scrape_twitter():
         if new_height == last_height:
             scroll_attempts += 1
             if scroll_attempts > 4:  # Nach 4 Versuchen abbrechen
+                print("DEBUG: Ende des Scrollens erreicht.")
                 break
         else:
             scroll_attempts = 0
             last_height = new_height
 
     driver.quit()
+    print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
     return sorted(tweets, key=lambda x: x["time"])  # Tweets nach Zeit sortieren
 
 
-def download_video_with_ytdlp(tweet_url):
-    """Lädt ein Video mithilfe von yt-dlp herunter und gibt den lokalen Pfad zurück."""
-    try:
-        with NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-            temp_path = tmp_file.name
-        subprocess.run(
-            ["yt-dlp", "-f", "best[ext=mp4]", tweet_url, "-o", temp_path],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return temp_path
-    except Exception as e:
-        return None
-
-
-def upload_media(mastodon, tweet):
-    """Verarbeitet Medien-Uploads (Videos über yt-dlp, Bilder direkt)."""
+def upload_media(mastodon, media_urls):
+    """Bilder hochladen und Media-IDs zurückgeben."""
     media_ids = []
-    if tweet["url"]:  # Versuch, ein Video herunterzuladen
-        video_path = download_video_with_ytdlp(tweet["url"])
-        if video_path:
-            with open(video_path, "rb") as video_file:
+    for media_url in media_urls[:4]:  # Maximal 4 Dateien
+        try:
+            print(f"DEBUG: Lade Medien hoch: {media_url}")
+            response = requests.get(media_url, timeout=20)
+            response.raise_for_status()
+
+            mime_type = mimetypes.guess_type(media_url)[0]
+            if not mime_type:
+                mime_type = "image/jpeg"
+
+            with NamedTemporaryFile(delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                media_path = tmp_file.name
+
+            with open(media_path, "rb") as media_file:
                 media_info = mastodon.media_post(
-                    video_file,
-                    mime_type="video/mp4",
-                    description="Automatisch generiertes Video"
+                    media_file,
+                    mime_type=mime_type,
+                    description="Automatisch generiertes Bild"
                 )
                 media_ids.append(media_info["id"])
-            os.unlink(video_path)
+            os.unlink(media_path)
+        except Exception as e:
+            print(f"ERROR: Fehler beim Hochladen von Medien: {e}")
+    print(f"DEBUG: Hochgeladene Medien-IDs: {media_ids}")
     return media_ids
-
-
-def truncate_text(text, hashtags, date_info, max_length=500):
-    """Text auf die maximale Länge kürzen."""
-    hashtags_part = f"{hashtags}\n\n" if hashtags else ""
-    reserved_length = len(hashtags_part) + len(date_info) + 5
-    text_cut = text[:max_length - reserved_length]
-    if len(text) > len(text_cut):
-        text_cut = text_cut.rstrip() + "..."
-    return f"{text_cut}\n\n{hashtags_part}{date_info}".strip()
-
-
-def get_last_published_date(mastodon):
-    """Abrufen des letzten veröffentlichten Datums von Mastodon."""
-    user_info = mastodon.me()
-    last_status = mastodon.account_statuses(user_info["id"], limit=1)
-    if last_status:
-        content = last_status[0]["content"]
-        match = re.search(r"(\d{2}/\d{2}/\d{4} \d{2}:\d{2})", content)
-        if match:
-            return datetime.strptime(match.group(1), "%d/%m/%Y %H:%M")
-    return None
-
-
-def is_strictly_newer(last_date, new_date):
-    """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
-    if not last_date:
-        return True
-    if new_date.year > last_date.year:
-        return True
-    elif new_date.year < last_date.year:
-        return False
-    if new_date.month > last_date.month:
-        return True
-    elif new_date.month < last_date.month:
-        return False
-    if new_date.day > last_date.day:
-        return True
-    elif new_date.day < last_date.day:
-        return False
-    if new_date.hour > last_date.hour:
-        return True
-    elif new_date.hour < last_date.hour:
-        return False
-    if new_date.minute > last_date.minute:
-        return True
-    return False
 
 
 def main():
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
-    last_published_date = get_last_published_date(mastodon)
-
     tweets = scrape_twitter()
-    for tweet in tweets:
-        if not is_strictly_newer(last_published_date, tweet["time"]):
-            continue
 
+    for tweet in tweets:
         date_info = tweet["time"].strftime("%d/%m/%Y %H:%M")
-        message = truncate_text(tweet["text"], hashtags, date_info)
-        media_ids = upload_media(mastodon, tweet)
+        message = f"{tweet['text']}\n\n{hashtags}\n\n{date_info}"
+        media_ids = upload_media(mastodon, tweet["media"])
 
         try:
             mastodon.status_post(message, media_ids=media_ids, visibility="public")
-            last_published_date = tweet["time"]
-            time.sleep(TROET_PAUSE)
+            print(f"DEBUG: Tweet gepostet mit Zeitstempel: {tweet['time']}")
+            time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
         except Exception as e:
-            continue
+            print(f"ERROR: Fehler beim Posten des Tweets: {e}")
 
 
 if __name__ == "__main__":
