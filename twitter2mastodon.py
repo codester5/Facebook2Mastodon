@@ -63,22 +63,43 @@ def is_strictly_newer(last_date, new_date):
 
 
 def scrape_twitter():
-    """Scrapt die Twitter-Seite nach Tweets und Medien."""
+    """Scrapt die Twitter-Seite nach Tweets, Medien und Zeitstempeln."""
     if not twitter_url:
         raise ValueError("FEHLER: TWITTER_URL ist nicht gesetzt.")
+    
     headers = {"User-Agent": "Mozilla/5.0"}
     print(f"DEBUG: Scraping Twitter-Seite: {twitter_url}")
     response = requests.get(twitter_url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
     tweets = []
-    for tweet in soup.find_all("div", {"data-testid": "tweet"}):
+    for article in soup.find_all("article", {"role": "article"}):
         try:
-            tweet_text = tweet.find("div", {"class": "css-901oao"}).text
-            media_urls = [img["src"] for img in tweet.find_all("img") if "src" in img.attrs]
-            tweet_time = datetime.now()  # Placeholder für Zeitstempel
+            # Extrahiere den Text
+            text_div = article.find("div", {"data-testid": "tweetText"})
+            tweet_text = text_div.get_text(strip=True) if text_div else "Kein Text gefunden"
+
+            # Extrahiere Medien-URLs (Bilder und Videos)
+            media_urls = []
+            for img in article.find_all("img", {"alt": "Bild"}):
+                media_urls.append(img["src"])
+
+            for video in article.find_all("video"):
+                source = video.find("source")
+                if source and source.get("src"):
+                    media_urls.append(source["src"])
+
+            # Extrahiere den Zeitstempel
+            time_tag = article.find("time")
+            tweet_time = (
+                datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
+                if time_tag and time_tag.get("datetime")
+                else datetime.now()
+            )
+
+            # Füge die Daten in die Tweets-Liste hinzu
             tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
-            print(f"DEBUG: Gefundener Tweet: {tweet_text[:50]}... mit {len(media_urls)} Medien.")
+            print(f"DEBUG: Gefundener Tweet: {tweet_text[:50]}... mit {len(media_urls)} Medien, Zeitstempel: {tweet_time}")
         except Exception as e:
             print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
             continue
