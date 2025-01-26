@@ -14,7 +14,7 @@ import re
 # Mastodon-Konfigurationsvariablen
 api_base_url = os.getenv("MASTODON_API_URL")
 access_token = os.getenv("MASTODON_ACCESS_TOKEN")
-hashtags = os.getenv("HASHTAGS")  # Standard-Hashtags
+hashtags = os.getenv("HASHTAGS", "#Besiktas")  # Standard-Hashtags
 
 # Twitter-URL aus Umgebungsvariablen
 twitter_url = os.getenv("TWITTER_URL")  # Muss gesetzt werden
@@ -24,11 +24,18 @@ TROET_LIMIT = 500
 
 
 def get_driver():
-    """Erstelle und konfiguriere den Firefox WebDriver für MacOS."""
-    options = Options()
-    options.headless = True  # Headless-Modus aktivieren
-    service = Service("/usr/local/bin/geckodriver")  # Pfad für GeckoDriver
-    return webdriver.Firefox(service=service, options=options)
+    """Erstelle und konfiguriere den Firefox WebDriver."""
+    try:
+        options = Options()
+        options.headless = True  # Headless-Modus aktivieren
+        service = Service("/usr/local/bin/geckodriver")  # Pfad zu GeckoDriver
+        print("DEBUG: Initialisiere WebDriver...")
+        driver = webdriver.Firefox(service=service, options=options)
+        print("DEBUG: WebDriver erfolgreich initialisiert.")
+        return driver
+    except Exception as e:
+        print(f"ERROR: WebDriver-Initialisierung fehlgeschlagen: {e}")
+        raise
 
 
 def scrape_twitter():
