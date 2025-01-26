@@ -1,9 +1,6 @@
 name: RSS to Mastodon
 
 on:
-  schedule:
-    # Alle 5 Stunden ausführen
-    - cron: "0 */5 * * *"
   workflow_dispatch:  # Aktiviert das manuelle Starten
 
 jobs:
