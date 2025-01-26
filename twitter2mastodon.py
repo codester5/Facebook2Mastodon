@@ -50,43 +50,48 @@ def scrape_twitter():
     scroll_delay = 3  # Zeit zwischen Scrolls
 
     while True:
-        # Extrahiere den HTML-Quellcode
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
-                # Extrahiere den gesamten Inhalt eines Tweets
+                # Text mit Emojis extrahieren
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
-                    # HTML-Inhalt des Divs mit Emojis und Links
-                    tweet_html = "".join(str(tag) for tag in text_div.contents)
-                    # HTML in Klartext umwandeln
-                    tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
+                    for elem in text_div.children:
+                        if elem.name == "img" and "alt" in elem.attrs:
+                            tweet_text += elem["alt"]  # Emoji hinzufügen
+                        elif elem.name:
+                            tweet_text += elem.get_text()
+                        else:
+                            tweet_text += str(elem)
+                    tweet_text = re.sub(r"\s+", " ", tweet_text).strip()
 
-                # Extrahiere Medien-URLs (priorisiere Videos)
+                # Medien extrahieren
                 media_urls = []
                 video_found = False
+
                 # Suche nach Videos
                 for video in article.find_all("video"):
                     source = video.find("source", {"src": True, "type": "video/mp4"})
-                    if source and "blob:" not in source["src"]:  # "blob:"-URLs ignorieren
+                    if source and "blob:" not in source["src"]:
                         media_urls = [source["src"]]
                         video_found = True
-                        break  # Beende die Suche nach Videos, wenn eines gefunden wird
+                        break
 
+                # Falls kein Video gefunden, suche nach Bildern
                 if not video_found:
-                    # Suche nach Bildern, wenn kein Video gefunden wurde
                     for img in article.find_all("img", {"src": True}):
                         if "twimg.com" in img["src"]:
+                            # Überspringe Thumbnails
+                            if "thumb" in img["src"]:
+                                print(f"DEBUG: Thumbnail übersprungen: {img['src']}")
+                                continue
                             media_urls.append(img["src"])
+                        if media_urls and "profile_images" in media_urls[0]:
+                            media_urls = media_urls[1:]
 
-                    # Verwerfe das Profilbild explizit anhand der URL
-                    if media_urls and "profile_images" in media_urls[0]:
-                        print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
-                        media_urls = media_urls[1:]  # Entferne das erste Bild
-
-                # Extrahiere den Zeitstempel
+                # Extrahiere Zeitstempel
                 time_tag = article.find("time")
                 tweet_time = (
                     datetime.strptime(time_tag["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -107,7 +112,7 @@ def scrape_twitter():
 
         # Scrolle nach unten
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(scroll_delay)  # Wartezeit zwischen Scrolls
+        time.sleep(scroll_delay)
 
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
