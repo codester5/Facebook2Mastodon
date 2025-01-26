@@ -48,11 +48,11 @@ def scrape_twitter():
     last_height = driver.execute_script("return document.body.scrollHeight")
     scroll_attempts = 0
 
-    print(f"DEBUG: Starte Scraping von {twitter_url}...")
-
     while True:
         # Extrahiere den HTML-Quellcode
         soup = BeautifulSoup(driver.page_source, "html.parser")
+        print("DEBUG: Scraping neue Tweets...")
+        found_tweets = 0
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
@@ -63,20 +63,21 @@ def scrape_twitter():
                     tweet_html = "".join(str(tag) for tag in text_div.contents)
                     tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
 
-                # Extrahiere Emojis
-                for img in text_div.find_all("img", {"alt": True}):
-                    tweet_text += img["alt"]
-
                 # Extrahiere Medien-URLs
                 media_urls = []
                 for img in article.find_all("img", {"src": True}):
-                    if "twimg.com" in img["src"] and "profile_images" not in img["src"]:
+                    if "twimg.com" in img["src"]:
                         media_urls.append(img["src"])
 
                 for video in article.find_all("video"):
                     source = video.find("source", {"src": True})
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
+
+                # Verwerfe das Profilbild explizit anhand der URL
+                if media_urls and "profile_images" in media_urls[0]:
+                    print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
+                    media_urls = media_urls[1:]  # Entferne das erste Bild
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
@@ -86,20 +87,23 @@ def scrape_twitter():
                     else None
                 )
                 if not tweet_time:
-                    print(f"DEBUG: Übersprungen (ungültiger Zeitstempel): {tweet_text}")
+                    print("DEBUG: Zeitstempel fehlt. Überspringe Tweet.")
                     continue
 
                 # Vermeide Duplikate
                 if any(tweet["time"] == tweet_time for tweet in tweets):
-                    print(f"DEBUG: Übersprungen (Duplikat): {tweet_text}")
+                    print(f"DEBUG: Duplikat gefunden. Überspringe Tweet mit Zeitstempel {tweet_time}.")
                     continue
 
-                print(f"DEBUG: Gefunden - Zeit: {tweet_time}, Text: {tweet_text}, Medien: {media_urls}")
-                tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
+                tweet = {"text": tweet_text, "media": media_urls, "time": tweet_time}
+                print(f"DEBUG: Gefundener Tweet: {tweet}")
+                tweets.append(tweet)
+                found_tweets += 1
             except Exception as e:
                 print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
                 continue
 
+        print(f"DEBUG: {found_tweets} Tweets in dieser Iteration gefunden.")
         # Scrolle nach unten
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(5)  # Wartezeit zwischen Scrolls erhöht
@@ -108,6 +112,7 @@ def scrape_twitter():
         if new_height == last_height:
             scroll_attempts += 1
             if scroll_attempts > 4:  # Nach 4 Versuchen abbrechen
+                print("DEBUG: Ende des Scrollens erreicht.")
                 break
         else:
             scroll_attempts = 0
@@ -201,11 +206,10 @@ def main():
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
     last_published_date = get_last_published_date(mastodon)
 
-    print(f"DEBUG: Letzte veröffentlichte Zeit: {last_published_date}")
     tweets = scrape_twitter()
     for tweet in tweets:
         if not is_strictly_newer(last_published_date, tweet["time"]):
-            print(f"DEBUG: Übersprungen (Zeitfilter): {tweet}")
+            print(f"DEBUG: Tweet mit Zeitstempel {tweet['time']} übersprungen (älter oder gleich letzter veröffentlichter Tweet).")
             continue
 
         date_info = tweet["time"].strftime("%d/%m/%Y %H:%M")
@@ -215,7 +219,7 @@ def main():
         try:
             mastodon.status_post(message, media_ids=media_ids, visibility="public")
             last_published_date = tweet["time"]
-            print(f"DEBUG: Tröt veröffentlicht: {tweet}")
+            print(f"DEBUG: Warte {TROET_PAUSE} Sekunden vor dem nächsten Tröt...")
             time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
         except Exception as e:
             print(f"ERROR: Fehler beim Posten des Tweets: {e}")
