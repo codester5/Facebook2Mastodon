@@ -59,15 +59,15 @@ def scrape_twitter():
                     tweet_html = "".join(str(tag) for tag in text_div.contents)
                     tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
 
-                    # Emojis hinzufügen
-                    for img in text_div.find_all("img", {"alt": True}):
-                        emoji = img["alt"]
-                        tweet_text += f" {emoji}"
+                # Extrahiere Emojis und füge sie korrekt ein
+                for img in text_div.find_all("img", {"alt": True}):
+                    emoji = img["alt"]
+                    tweet_text = tweet_text.replace(str(img), emoji)
 
                 # Extrahiere Medien-URLs
                 media_urls = []
                 for img in article.find_all("img", {"src": True}):
-                    if "twimg.com" in img["src"] and "thumb" not in img["src"]:
+                    if "twimg.com" in img["src"] and "profile_images" not in img["src"]:
                         media_urls.append(img["src"])
 
                 for video in article.find_all("video"):
@@ -75,10 +75,9 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
-                # Verwerfe das Profilbild explizit anhand der URL
-                if media_urls and "profile_images" in media_urls[0]:
-                    print(f"DEBUG: Entferne das Profilbild: {media_urls[0]}")
-                    media_urls = media_urls[1:]  # Entferne das erste Bild
+                # Entferne Thumbnails, wenn Videos vorhanden sind
+                if any("thumb" in url for url in media_urls):
+                    media_urls = [url for url in media_urls if "thumb" not in url]
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
@@ -94,7 +93,7 @@ def scrape_twitter():
                 if any(tweet["time"] == tweet_time for tweet in tweets):
                     continue
 
-                tweets.append({"text": tweet_text.strip(), "media": media_urls, "time": tweet_time})
+                tweets.append({"text": tweet_text, "media": media_urls, "time": tweet_time})
             except Exception as e:
                 print(f"ERROR: Fehler beim Verarbeiten eines Tweets: {e}")
                 continue
