@@ -3,8 +3,8 @@ name: Twitter to Mastodon Bot
 on:
   workflow_dispatch: # Manuelle Ausführung
   schedule:
-    - cron: "0 13-22 * * *" # Stündlich zwischen 13 und 22 Uhr
-    - cron: "0 6 * * *"     # Einmal um 6 Uhr morgens
+    - cron: "0 12-21 * * *" # Stündlich zwischen 13 und 22 Uhr
+    - cron: "0 5 * * *"     # Einmal um 6 Uhr morgens
 
 jobs:
   run-twitter-to-mastodon:
