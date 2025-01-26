@@ -26,7 +26,6 @@ TROET_LIMIT = 500
 # Pause zwischen Tröts in Sekunden
 TROET_PAUSE = 35
 
-
 def get_driver():
     """Erstelle und konfiguriere den Firefox WebDriver."""
     options = Options()
@@ -36,7 +35,6 @@ def get_driver():
         raise FileNotFoundError("GeckoDriver nicht im PATH gefunden.")
     service = Service(geckodriver_path)
     return webdriver.Firefox(service=service, options=options)
-
 
 def scrape_twitter():
     """Scrapt die Twitter-Seite nach Tweets, Medien und Zeitstempeln."""
@@ -54,19 +52,19 @@ def scrape_twitter():
 
         for article in soup.find_all("article", {"role": "article"}):
             try:
-                # Extrahiere den Text mit Emojis
+                # Extrahiere den Text mit Struktur und Emojis
                 text_div = article.find("div", {"data-testid": "tweetText"})
                 tweet_text = ""
                 if text_div:
-                    tweet_parts = []
-                    for child in text_div.contents:
-                        if child.name == "img" and child.get("alt"):
-                            tweet_parts.append(child["alt"])  # Emoji hinzufügen
-                        elif child.string:
-                            tweet_parts.append(child.string)
-                    tweet_text = "".join(tweet_parts).strip()
+                    tweet_html = "".join(str(tag) for tag in text_div.contents)
+                    tweet_text = BeautifulSoup(tweet_html, "html.parser").get_text(separator="\n")
 
-                # Extrahiere Medien-URLs (Video oder Bild)
+                # Extrahiere Emojis und füge sie korrekt ein
+                for img in text_div.find_all("img", {"alt": True}):
+                    emoji = img["alt"]
+                    tweet_text = tweet_text.replace(str(img), emoji)
+
+                # Extrahiere Medien-URLs
                 media_urls = []
                 for img in article.find_all("img", {"src": True}):
                     if "twimg.com" in img["src"] and "profile_images" not in img["src"]:
@@ -77,10 +75,9 @@ def scrape_twitter():
                     if source and "twimg.com" in source["src"]:
                         media_urls.append(source["src"])
 
-                # Verwerfe Profilbilder und Thumbnails
-                media_urls = [
-                    url for url in media_urls if "profile_images" not in url and "thumb" not in url
-                ]
+                # Entferne Thumbnails, wenn Videos vorhanden sind
+                if any("thumb" in url for url in media_urls):
+                    media_urls = [url for url in media_urls if "thumb" not in url]
 
                 # Extrahiere den Zeitstempel
                 time_tag = article.find("time")
@@ -118,7 +115,6 @@ def scrape_twitter():
     print(f"DEBUG: Insgesamt {len(tweets)} Tweets gefunden.")
     return sorted(tweets, key=lambda x: x["time"])  # Tweets nach Zeit sortieren
 
-
 def upload_media(mastodon, media_urls):
     """Bilder oder Videos hochladen und Media-IDs zurückgeben."""
     media_ids = []
@@ -150,7 +146,6 @@ def upload_media(mastodon, media_urls):
     print(f"DEBUG: Hochgeladene Medien-IDs: {media_ids}")
     return media_ids
 
-
 def truncate_text(text, hashtags, date_info, max_length=500):
     """Text auf die maximale Länge kürzen."""
     hashtags_part = f"{hashtags}\n\n" if hashtags else ""
@@ -159,7 +154,6 @@ def truncate_text(text, hashtags, date_info, max_length=500):
     if len(text) > len(text_cut):
         text_cut = text_cut.rstrip() + "..."
     return f"{text_cut}\n\n{hashtags_part}{date_info}".strip()
-
 
 def get_last_published_date(mastodon):
     """Abrufen des letzten veröffentlichten Datums von Mastodon."""
@@ -171,7 +165,6 @@ def get_last_published_date(mastodon):
         if match:
             return datetime.strptime(match.group(1), "%d/%m/%Y %H:%M")
     return None
-
 
 def is_strictly_newer(last_date, new_date):
     """Vergleiche Jahr, Monat, Tag, Stunde und Minute schrittweise."""
@@ -197,7 +190,6 @@ def is_strictly_newer(last_date, new_date):
         return True
     return False
 
-
 def main():
     mastodon = Mastodon(access_token=access_token, api_base_url=api_base_url)
     last_published_date = get_last_published_date(mastodon)
@@ -218,7 +210,6 @@ def main():
             time.sleep(TROET_PAUSE)  # Pause zwischen den Tröts
         except Exception as e:
             print(f"ERROR: Fehler beim Posten des Tweets: {e}")
-
 
 if __name__ == "__main__":
     main()
